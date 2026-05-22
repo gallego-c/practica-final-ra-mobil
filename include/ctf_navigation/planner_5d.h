@@ -90,6 +90,10 @@ private:
     bool initialized_;
     bool goal_reached_;
 
+    // Alternates the in-place recovery rotation direction to escape dead-ends.
+    int             rotation_sign_;
+    ros::Time       last_rotation_switch_;
+
     std::vector<geometry_msgs::PoseStamped> global_plan_;
     geometry_msgs::PoseStamped              goal_pose_;
 

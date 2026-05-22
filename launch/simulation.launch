@@ -1,6 +1,11 @@
 <launch>
+  <arg name="robot1_x" default="-3.0"/>
+  <arg name="robot1_y" default="-3.0"/>
+  <arg name="robot1_yaw" default="0.0"/>
+  <arg name="robot2_x" default="3.0"/>
+  <arg name="robot2_y" default="3.0"/>
+  <arg name="robot2_yaw" default="3.1416"/>
 
-  <!-- Gazebo con nuestro mundo -->
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
     <arg name="world_name" value="$(find ctf_navigation)/worlds/ctf_world.world"/>
     <arg name="paused" value="false"/>
@@ -10,10 +15,10 @@
     <arg name="debug" value="false"/>
   </include>
 
-  <!-- ===== ROBOT 1 — base en (-3, -3) ===== -->
   <group ns="robot1">
+    <param name="tf_prefix" value="robot1"/>
     <param name="robot_description"
-      command="$(find xacro)/xacro $(find turtlebot3_description)/urdf/turtlebot3_waffle_pi.urdf.xacro"/>
+           command="$(find xacro)/xacro $(find turtlebot3_description)/urdf/turtlebot3_waffle_pi.urdf.xacro"/>
 
     <node pkg="robot_state_publisher" type="robot_state_publisher"
           name="robot_state_publisher" output="screen">
@@ -23,16 +28,16 @@
     </node>
 
     <node pkg="gazebo_ros" type="spawn_model" name="spawn_robot1" output="screen"
-      args="-urdf -model robot1
-            -x -3.0 -y -3.0 -z 0.0 -Y 0.0
-            -param robot_description
-            -robot_namespace /robot1"/>
+          args="-urdf -model robot1
+                -x $(arg robot1_x) -y $(arg robot1_y) -z 0.0 -Y $(arg robot1_yaw)
+                -param robot_description
+                -robot_namespace /robot1"/>
   </group>
 
-  <!-- ===== ROBOT 2 — base en (3, 3) mirando al sur ===== -->
   <group ns="robot2">
+    <param name="tf_prefix" value="robot2"/>
     <param name="robot_description"
-      command="$(find xacro)/xacro $(find turtlebot3_description)/urdf/turtlebot3_waffle_pi.urdf.xacro"/>
+           command="$(find xacro)/xacro $(find turtlebot3_description)/urdf/turtlebot3_waffle_pi.urdf.xacro"/>
 
     <node pkg="robot_state_publisher" type="robot_state_publisher"
           name="robot_state_publisher" output="screen">
@@ -42,10 +47,9 @@
     </node>
 
     <node pkg="gazebo_ros" type="spawn_model" name="spawn_robot2" output="screen"
-      args="-urdf -model robot2
-            -x 3.0 -y 3.0 -z 0.0 -Y 3.1416
-            -param robot_description
-            -robot_namespace /robot2"/>
+          args="-urdf -model robot2
+                -x $(arg robot2_x) -y $(arg robot2_y) -z 0.0 -Y $(arg robot2_yaw)
+                -param robot_description
+                -robot_namespace /robot2"/>
   </group>
-
 </launch>

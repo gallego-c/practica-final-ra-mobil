@@ -3,4 +3,18 @@ robot_base_frame: base_footprint
 update_frequency: 2.0
 publish_frequency: 1.0
 static_map: true
+rolling_window: false
+width: 10.0
+height: 10.0
+origin_x: -5.0
+origin_y: -5.0
 transform_tolerance: 1.0
+plugins:
+  - {name: static_layer, type: "costmap_2d::StaticLayer"}
+  - {name: inflation_layer, type: "costmap_2d::InflationLayer"}
+
+# Override inflation for the GLOBAL costmap.
+# Larger radius than local → global plan avoids routing the robot tight against
+# wall ends and corners.  costmap_common.yaml sets 0.28m; keep that.
+# (No override needed here — 0.28 m from costmap_common.yaml is appropriate
+#  for global planning.)

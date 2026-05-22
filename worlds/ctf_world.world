@@ -37,17 +37,17 @@
 
     <!-- Pared central con hueco (dos segmentos) -->
     <model name="wall_center_left">
-      <static>true</static><pose>-2.5 0 0.5 0 0 0</pose>
+      <static>true</static><pose>-2.75 0 0.5 0 0 0</pose>
       <link name="link">
-        <collision name="col"><geometry><box><size>4 0.2 1</size></box></geometry></collision>
-        <visual name="vis"><geometry><box><size>4 0.2 1</size></box></geometry></visual>
+        <collision name="col"><geometry><box><size>3.5 0.2 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>3.5 0.2 1</size></box></geometry></visual>
       </link>
     </model>
     <model name="wall_center_right">
-      <static>true</static><pose>2.5 0 0.5 0 0 0</pose>
+      <static>true</static><pose>2.75 0 0.5 0 0 0</pose>
       <link name="link">
-        <collision name="col"><geometry><box><size>4 0.2 1</size></box></geometry></collision>
-        <visual name="vis"><geometry><box><size>4 0.2 1</size></box></geometry></visual>
+        <collision name="col"><geometry><box><size>3.5 0.2 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>3.5 0.2 1</size></box></geometry></visual>
       </link>
     </model>
 
@@ -90,6 +90,43 @@
       <link name="link">
         <collision name="col"><geometry><box><size>0.3 0.3 1</size></box></geometry></collision>
         <visual name="vis"><geometry><box><size>0.3 0.3 1</size></box></geometry></visual>
+      </link>
+    </model>
+
+    <model name="ctf_flag">
+      <static>true</static>
+      <pose>-3.2 3.2 0 0 0 0</pose>
+      <link name="flag_link">
+        <visual name="pole">
+          <pose>0 0 0.45 0 0 0</pose>
+          <geometry>
+            <cylinder><radius>0.025</radius><length>0.9</length></cylinder>
+          </geometry>
+          <material>
+            <ambient>0.05 0.05 0.05 1</ambient>
+            <diffuse>0.05 0.05 0.05 1</diffuse>
+          </material>
+        </visual>
+        <visual name="cloth">
+          <pose>0.18 0 0.72 0 0 0</pose>
+          <geometry>
+            <box><size>0.36 0.02 0.24</size></box>
+          </geometry>
+          <material>
+            <ambient>1 0.05 0.05 1</ambient>
+            <diffuse>1 0.05 0.05 1</diffuse>
+          </material>
+        </visual>
+        <visual name="base_marker">
+          <pose>0 0 0.01 0 0 0</pose>
+          <geometry>
+            <cylinder><radius>0.18</radius><length>0.02</length></cylinder>
+          </geometry>
+          <material>
+            <ambient>1 0.05 0.05 0.8</ambient>
+            <diffuse>1 0.05 0.05 0.8</diffuse>
+          </material>
+        </visual>
       </link>
     </model>
 

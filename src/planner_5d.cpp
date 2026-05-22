@@ -237,7 +237,9 @@ bool Planner5D::computeVelocityCommands(geometry_msgs::Twist& cmd_vel)
         const unsigned char c = cm->getCost(pmx, pmy);
         if (c > 0 && c < costmap_2d::INSCRIBED_INFLATED_OBSTACLE)
         {
-          proximity_penalty = 0.8 * (static_cast<double>(c) / 252.0);
+          // Keep the penalty gentle so the planner can still route near wall
+          // ends when needed; the INSCRIBED collision check above handles safety.
+          proximity_penalty = 0.3 * (static_cast<double>(c) / 252.0);
         }
       }
 

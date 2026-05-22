@@ -1,17 +1,18 @@
-# Límites cinemáticos del TurtleBot3 Waffle Pi
+# Planner5D — velocity-rollout local planner for TurtleBot3 Waffle Pi
+# Kinematic limits
 max_vel_x:          0.26
 min_vel_x:          0.0
 max_vel_theta:      1.82
 acc_lim_x:          2.5
 acc_lim_theta:      3.2
 
-# Tolerancia al goal
+# Goal tolerances
 xy_goal_tolerance:  0.15
 yaw_goal_tolerance: 0.1
 
-# Parámetros de búsqueda 5D
-sim_time:           2.0
-sim_step:           0.1
-v_samples:          10
-omega_samples:      20
+# Trajectory rollout parameters
+sim_time:           1.5
+sim_step:           0.05    # finer steps → catches corners before they become lethal
+v_samples:          12
+omega_samples:      24
 max_iterations:     500
