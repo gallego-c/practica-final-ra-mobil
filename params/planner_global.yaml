@@ -1,0 +1,11 @@
+allow_unknown: true
+default_tolerance: 0.1
+use_dijkstra: false
+use_quadratic: true
+use_grid_path: false
+lethal_cost: 253
+neutral_cost: 50
+cost_factor: 0.55
+publish_potential: true
+orientation_mode: 0
+orientation_window_size: 1

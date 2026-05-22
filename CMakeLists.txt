@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(practica_final_ra_mobil)
+project(ctf_navigation)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
@@ -9,9 +9,17 @@ project(practica_final_ra_mobil)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   roscpp
-  rospy
   std_msgs
   geometry_msgs
+  nav_msgs
+  move_base_msgs
+  actionlib
+  actionlib_msgs
+  tf2_ros
+  tf2_geometry_msgs
+  nav_core
+  costmap_2d
+  pluginlib
 )
 
 ## System dependencies are found with CMake's conventions
@@ -71,7 +79,7 @@ find_package(catkin REQUIRED COMPONENTS
 ## Generate added messages and services with any dependencies listed here
 # generate_messages(
 #   DEPENDENCIES
-#   std_msgs
+#   geometry_msgs#   move_base_msgs#   nav_msgs#   std_msgs
 # )
 
 ################################################
@@ -104,10 +112,21 @@ find_package(catkin REQUIRED COMPONENTS
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES practica_final_ra_mobil
-#  CATKIN_DEPENDS roscpp rospy std_msgs geometry_msgs
-#  DEPENDS system_lib
+  INCLUDE_DIRS include
+  LIBRARIES ctf_navigation
+  CATKIN_DEPENDS
+    roscpp
+    std_msgs
+    geometry_msgs
+    nav_msgs
+    move_base_msgs
+    actionlib
+    actionlib_msgs
+    tf2_ros
+    tf2_geometry_msgs
+    nav_core
+    costmap_2d
+    pluginlib
 )
 
 ###########
@@ -122,9 +141,8 @@ include_directories(
 )
 
 ## Declare a C++ library
-# add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/practica_final_ra_mobil.cpp
-# )
+add_library(ctf_navigation src/planner_5d.cpp)
+target_link_libraries(ctf_navigation ${catkin_LIBRARIES})
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
@@ -134,7 +152,7 @@ include_directories(
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
-add_executable(teleop_keyboard src/teleop_keyboard.cpp)
+# add_executable(${PROJECT_NAME}_node src/ctf_navigation_node.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -147,10 +165,15 @@ add_executable(teleop_keyboard src/teleop_keyboard.cpp)
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(teleop_keyboard
-  ${catkin_LIBRARIES}
-)
+# target_link_libraries(${PROJECT_NAME}_node
+#   ${catkin_LIBRARIES}
+# )
+add_executable(test_navigation src/test_navigation.cpp)
+target_link_libraries(test_navigation ${catkin_LIBRARIES})
 
+# Instalar el plugin
+install(FILES planner_5d_plugin.xml
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
 #############
 ## Install ##
 #############
@@ -160,16 +183,16 @@ target_link_libraries(teleop_keyboard
 
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
-catkin_install_python(PROGRAMS
-  scripts/teleop_keyboard.py
-  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
+# catkin_install_python(PROGRAMS
+#   scripts/my_python_script
+#   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+# )
 
 ## Mark executables for installation
 ## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_executables.html
-install(TARGETS teleop_keyboard
-  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
+# install(TARGETS ${PROJECT_NAME}_node
+#   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+# )
 
 ## Mark libraries for installation
 ## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_libraries.html
@@ -187,16 +210,18 @@ install(TARGETS teleop_keyboard
 # )
 
 ## Mark other files for installation (e.g. launch and bag files, etc.)
-install(DIRECTORY launch/
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
-)
+# install(FILES
+#   # myfile1
+#   # myfile2
+#   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+# )
 
 #############
 ## Testing ##
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_practica_final_ra_mobil.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_ctf_navigation.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()
