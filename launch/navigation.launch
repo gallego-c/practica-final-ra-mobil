@@ -58,10 +58,15 @@
       <param name="global_costmap/robot_base_frame" value="robot1/base_footprint"/>
       <param name="local_costmap/robot_base_frame" value="robot1/base_footprint"/>
       <param name="local_costmap/global_frame" value="robot1/odom"/>
-      <!-- Scan topics: must live under obstacle_layer/ (the plugin namespace) -->
+      <!-- ── Local costmap sensor topics (plugin namespace) ───────────────── -->
       <param name="local_costmap/obstacle_layer/scan/topic"        value="/robot1/scan"/>
-      <!-- Other robot's footprint cloud for inter-robot collision avoidance -->
       <param name="local_costmap/obstacle_layer/other_robot/topic" value="/robot1/other_robot_cloud"/>
+      <!-- ── Global costmap sensor topics ──────────────────────────────────
+           Adding the scan to the global costmap lets the global planner
+           replan around dynamic obstacles (people, moved furniture, etc.).
+           observation_persistence is set in costmap_global.yaml (3 s for scan).  -->
+      <param name="global_costmap/obstacle_layer/scan/topic"        value="/robot1/scan"/>
+      <param name="global_costmap/obstacle_layer/other_robot/topic" value="/robot1/other_robot_cloud"/>
       <param name="base_global_planner" value="global_planner/GlobalPlanner"/>
       <rosparam file="$(find ctf_navigation)/params/planner_global.yaml"
                 command="load" ns="GlobalPlanner"/>
@@ -121,10 +126,12 @@
       <param name="global_costmap/robot_base_frame" value="robot2/base_footprint"/>
       <param name="local_costmap/robot_base_frame" value="robot2/base_footprint"/>
       <param name="local_costmap/global_frame" value="robot2/odom"/>
-      <!-- Scan topics: must live under obstacle_layer/ (the plugin namespace) -->
+      <!-- ── Local costmap sensor topics (plugin namespace) ───────────────── -->
       <param name="local_costmap/obstacle_layer/scan/topic"        value="/robot2/scan"/>
-      <!-- Other robot's footprint cloud for inter-robot collision avoidance -->
       <param name="local_costmap/obstacle_layer/other_robot/topic" value="/robot2/other_robot_cloud"/>
+      <!-- ── Global costmap sensor topics ────────────────────────────────── -->
+      <param name="global_costmap/obstacle_layer/scan/topic"        value="/robot2/scan"/>
+      <param name="global_costmap/obstacle_layer/other_robot/topic" value="/robot2/other_robot_cloud"/>
       <param name="base_global_planner" value="global_planner/GlobalPlanner"/>
       <rosparam file="$(find ctf_navigation)/params/planner_global.yaml"
                 command="load" ns="GlobalPlanner"/>

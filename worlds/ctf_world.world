@@ -93,42 +93,8 @@
       </link>
     </model>
 
-    <model name="ctf_flag">
-      <static>true</static>
-      <pose>-3.2 3.2 0 0 0 0</pose>
-      <link name="flag_link">
-        <visual name="pole">
-          <pose>0 0 0.45 0 0 0</pose>
-          <geometry>
-            <cylinder><radius>0.025</radius><length>0.9</length></cylinder>
-          </geometry>
-          <material>
-            <ambient>0.05 0.05 0.05 1</ambient>
-            <diffuse>0.05 0.05 0.05 1</diffuse>
-          </material>
-        </visual>
-        <visual name="cloth">
-          <pose>0.18 0 0.72 0 0 0</pose>
-          <geometry>
-            <box><size>0.36 0.02 0.24</size></box>
-          </geometry>
-          <material>
-            <ambient>1 0.05 0.05 1</ambient>
-            <diffuse>1 0.05 0.05 1</diffuse>
-          </material>
-        </visual>
-        <visual name="base_marker">
-          <pose>0 0 0.01 0 0 0</pose>
-          <geometry>
-            <cylinder><radius>0.18</radius><length>0.02</length></cylinder>
-          </geometry>
-          <material>
-            <ambient>1 0.05 0.05 0.8</ambient>
-            <diffuse>1 0.05 0.05 0.8</diffuse>
-          </material>
-        </visual>
-      </link>
-    </model>
+    <!-- ctf_flag se spawnea dinámicamente desde ctf_demo.launch con posición
+         configurable (ver arg flag_x / flag_y). -->
 
   </world>
 </sdf>
