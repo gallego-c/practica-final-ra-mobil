@@ -51,6 +51,7 @@ def _make_cloud(frame_id: str, cx: float, cy: float) -> PointCloud2:
 
 def main():
     rospy.init_node('robot_obstacle_publisher')
+    target_frame = rospy.get_param('~target_frame', 'map')
 
     tf_buffer = tf2_ros.Buffer()
     tf2_ros.TransformListener(tf_buffer)
@@ -71,14 +72,14 @@ def main():
         for source_ns, pub in pairs:
             try:
                 tf = tf_buffer.lookup_transform(
-                    'map',
+                    target_frame,
                     source_ns + '/base_footprint',
                     rospy.Time(0),
                     rospy.Duration(0.15)
                 )
                 cx = tf.transform.translation.x
                 cy = tf.transform.translation.y
-                pub.publish(_make_cloud('map', cx, cy))
+                pub.publish(_make_cloud(target_frame, cx, cy))
             except tf2_ros.TransformException as exc:
                 rospy.logwarn_throttle(
                     5.0, 'robot_obstacle_publisher: TF lookup failed: %s', str(exc)

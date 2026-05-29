@@ -1,0 +1,47 @@
+<launch>
+  <arg name="robot1_map_frame" default="robot1/map"/>
+  <arg name="robot2_map_frame" default="robot2/map"/>
+  <arg name="world_frame" default="world"/>
+  <arg name="merged_map_topic" default="/merged_map"/>
+
+  <arg name="robot1_init_x" default="-3.0"/>
+  <arg name="robot1_init_y" default="-3.0"/>
+  <arg name="robot1_init_yaw" default="0.0"/>
+  <arg name="robot2_init_x" default="3.0"/>
+  <arg name="robot2_init_y" default="3.0"/>
+  <arg name="robot2_init_yaw" default="3.1416"/>
+
+  <!-- Initial robot poses in the common world frame. These values match the
+       spawn positions in simulation.launch and feed multirobot_map_merge's
+       known-initial-pose mode. -->
+  <param name="/robot1/map_merge/init_pose_x" value="$(arg robot1_init_x)"/>
+  <param name="/robot1/map_merge/init_pose_y" value="$(arg robot1_init_y)"/>
+  <param name="/robot1/map_merge/init_pose_z" value="0.0"/>
+  <param name="/robot1/map_merge/init_pose_yaw" value="$(arg robot1_init_yaw)"/>
+
+  <param name="/robot2/map_merge/init_pose_x" value="$(arg robot2_init_x)"/>
+  <param name="/robot2/map_merge/init_pose_y" value="$(arg robot2_init_y)"/>
+  <param name="/robot2/map_merge/init_pose_z" value="0.0"/>
+  <param name="/robot2/map_merge/init_pose_yaw" value="$(arg robot2_init_yaw)"/>
+
+  <!-- TF bridges from the shared world frame into each robot's SLAM map frame. -->
+  <node pkg="tf2_ros" type="static_transform_publisher"
+        name="world_to_robot1_map"
+        args="$(arg robot1_init_x) $(arg robot1_init_y) 0 $(arg robot1_init_yaw) 0 0 $(arg world_frame) $(arg robot1_map_frame)"/>
+
+  <node pkg="tf2_ros" type="static_transform_publisher"
+        name="world_to_robot2_map"
+        args="$(arg robot2_init_x) $(arg robot2_init_y) 0 $(arg robot2_init_yaw) 0 0 $(arg world_frame) $(arg robot2_map_frame)"/>
+
+  <node pkg="multirobot_map_merge" type="map_merge"
+        name="map_merge" output="screen">
+    <param name="robot_map_topic" value="map"/>
+    <param name="robot_namespace" value="robot"/>
+    <param name="merged_map_topic" value="$(arg merged_map_topic)"/>
+    <param name="world_frame" value="$(arg world_frame)"/>
+    <param name="known_init_poses" value="true"/>
+    <param name="known_init_pose" value="true"/>
+    <param name="merging_rate" value="0.5"/>
+    <param name="discovery_rate" value="0.05"/>
+  </node>
+</launch>

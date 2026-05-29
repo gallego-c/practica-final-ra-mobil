@@ -14,6 +14,7 @@ sudo apt install \
   ros-noetic-turtlebot3-description \
   ros-noetic-turtlebot3-navigation \
   ros-noetic-costmap-2d \
+  ros-noetic-multirobot-map-merge \
   ros-noetic-nav-core \
   ros-noetic-navigation
 ```
@@ -34,7 +35,8 @@ Optional launches:
 - Gazebo only (two robots, no navigation): `roslaunch ctf_navigation simulation.launch`
 - Navigation on the CTF map: `roslaunch ctf_navigation navigation.launch`
 - SLAM with gmapping: `roslaunch ctf_navigation gmapping.launch`
-- Shared SLAM scaffold: `roslaunch ctf_navigation slam_demo.launch run_demo:=false`
+- Map merge only: `roslaunch ctf_navigation map_merge.launch`
+- Shared SLAM with known initial poses: `roslaunch ctf_navigation slam_demo.launch run_demo:=false`
 
 Demo arguments (example):
 ```bash

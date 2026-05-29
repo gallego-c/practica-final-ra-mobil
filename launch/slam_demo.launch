@@ -1,30 +1,32 @@
 <launch>
   <arg name="local_planner" default="dwa"/>
   <arg name="run_demo" default="true"/>
-  <arg name="use_map_merger" default="true"/>
-  <arg name="publish_tf_bridges" default="true"/>
+  <arg name="world_frame" default="world"/>
+  <arg name="merged_map_topic" default="/merged_map"/>
 
   <include file="$(find ctf_navigation)/launch/simulation.launch"/>
 
   <include file="$(find ctf_navigation)/launch/shared_slam.launch">
-    <arg name="use_map_merger" value="$(arg use_map_merger)"/>
-    <arg name="publish_tf_bridges" value="$(arg publish_tf_bridges)"/>
+    <arg name="world_frame" value="$(arg world_frame)"/>
+    <arg name="merged_map_topic" value="$(arg merged_map_topic)"/>
   </include>
 
-  <!-- Reuse the existing dynamic obstacle publisher once the shared /map frame
-       is available. -->
   <node pkg="ctf_navigation" type="robot_obstacle_publisher.py"
-        name="robot_obstacle_publisher" output="screen"/>
+        name="robot_obstacle_publisher" output="screen">
+    <param name="target_frame" value="$(arg world_frame)"/>
+  </node>
 
   <include file="$(find ctf_navigation)/launch/slam_navigation.launch">
     <arg name="local_planner" value="$(arg local_planner)"/>
+    <arg name="world_frame" value="$(arg world_frame)"/>
+    <arg name="merged_map_topic" value="$(arg merged_map_topic)"/>
   </include>
 
-  <!-- The game node still uses fixed goals in /map. Keep it optional while the
-       shared map alignment is being tuned. -->
+  <!-- The game node uses the same fixed coordinates as Gazebo, now expressed
+       in the shared world frame produced by multirobot_map_merge. -->
   <node if="$(arg run_demo)" pkg="ctf_navigation" type="ctf_demo_node"
         name="ctf_demo_node" output="screen">
-    <param name="frame" value="map"/>
+    <param name="frame" value="$(arg world_frame)"/>
     <param name="robot1_ns" value="robot1"/>
     <param name="robot2_ns" value="robot2"/>
     <param name="robot1_base_frame" value="robot1/base_footprint"/>

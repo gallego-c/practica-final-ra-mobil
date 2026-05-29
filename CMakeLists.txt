@@ -59,6 +59,5 @@ install(FILES planner_5d_plugin.xml
 
 catkin_install_python(PROGRAMS
   scripts/robot_obstacle_publisher.py
-  scripts/shared_map_merger.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
