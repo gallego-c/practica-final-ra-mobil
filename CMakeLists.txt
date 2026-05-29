@@ -6,6 +6,7 @@ add_compile_options(-std=c++11)
 find_package(catkin REQUIRED COMPONENTS
   actionlib
   actionlib_msgs
+  base_local_planner
   costmap_2d
   cv_bridge
   geometry_msgs
@@ -29,6 +30,7 @@ catkin_package(
   CATKIN_DEPENDS
     actionlib
     actionlib_msgs
+    base_local_planner
     costmap_2d
     cv_bridge
     geometry_msgs
@@ -103,4 +105,10 @@ install(FILES planner_5d_plugin.xml
 
 install(DIRECTORY launch params rviz worlds models maps
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+)
+
+catkin_install_python(PROGRAMS
+  scripts/robot_obstacle_publisher.py
+  scripts/slam_frontier_explorer.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

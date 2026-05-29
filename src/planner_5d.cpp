@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 
+#include <base_local_planner/costmap_model.h>
 #include <costmap_2d/cost_values.h>
 #include <pluginlib/class_list_macros.h>
 #include <tf2/utils.h>
@@ -29,8 +30,11 @@ Planner5D::Planner5D()
   , max_iterations_(500)
   , initialized_(false)
   , goal_reached_(false)
+  , path_follow_weight_(2.0)
+  , proximity_weight_(0.3)
+  , escape_mode_(0)
   , rotation_sign_(1)
-  , last_rotation_switch_(0)
+  , last_escape_switch_(0)
   , costmap_ros_(nullptr)
   , tf_(nullptr)
 {
@@ -60,6 +64,8 @@ void Planner5D::initialize(std::string name,
   private_nh.param("v_samples", v_samples_, v_samples_);
   private_nh.param("omega_samples", omega_samples_, omega_samples_);
   private_nh.param("max_iterations", max_iterations_, max_iterations_);
+  private_nh.param("path_follow_weight", path_follow_weight_, path_follow_weight_);
+  private_nh.param("proximity_weight", proximity_weight_, proximity_weight_);
   fallback_nh.param("max_vel_x", max_vel_x_, max_vel_x_);
   fallback_nh.param("min_vel_x", min_vel_x_, min_vel_x_);
   fallback_nh.param("max_vel_theta", max_vel_theta_, max_vel_theta_);
@@ -72,6 +78,8 @@ void Planner5D::initialize(std::string name,
   fallback_nh.param("v_samples", v_samples_, v_samples_);
   fallback_nh.param("omega_samples", omega_samples_, omega_samples_);
   fallback_nh.param("max_iterations", max_iterations_, max_iterations_);
+  fallback_nh.param("path_follow_weight", path_follow_weight_, path_follow_weight_);
+  fallback_nh.param("proximity_weight", proximity_weight_, proximity_weight_);
 
   tf_ = tf;
   costmap_ros_ = costmap_ros;
@@ -91,6 +99,7 @@ bool Planner5D::setPlan(const std::vector<geometry_msgs::PoseStamped>& plan)
 
   global_plan_ = plan;
   goal_reached_ = false;
+  escape_mode_ = 0;
 
   if (global_plan_.empty())
   {
@@ -214,10 +223,35 @@ bool Planner5D::computeVelocityCommands(geometry_msgs::Twist& cmd_vel)
         const unsigned char c = cm->getCost(pmx, pmy);
         if (c > 0 && c < costmap_2d::INSCRIBED_INFLATED_OBSTACLE)
         {
-          // Keep the penalty gentle so the planner can still route near wall
-          // ends when needed; the INSCRIBED collision check above handles safety.
-          proximity_penalty = 0.3 * (static_cast<double>(c) / 252.0);
+          proximity_penalty = proximity_weight_ * (static_cast<double>(c) / 252.0);
         }
+      }
+
+      const double target_dist = geometry::distance2D(rollout.x, rollout.y, target_x, target_y);
+      const double final_goal_dist =
+          geometry::distance2D(rollout.x, rollout.y, goal_x, goal_y);
+
+      double path_dist = std::numeric_limits<double>::infinity();
+      for (const auto& pose : global_plan_)
+      {
+        geometry_msgs::PoseStamped transformed = pose;
+        try
+        {
+          transformed = tf_->transform(pose, costmap_ros_->getGlobalFrameID(),
+                                         ros::Duration(0.01));
+        }
+        catch (const tf2::TransformException&)
+        {
+          continue;
+        }
+        path_dist = std::min(path_dist,
+                             geometry::distance2D(rollout.x, rollout.y,
+                                                  transformed.pose.position.x,
+                                                  transformed.pose.position.y));
+      }
+      if (!std::isfinite(path_dist))
+      {
+        path_dist = geometry::distance2D(rollout.x, rollout.y, target_x, target_y);
       }
 
       const double target_dist = geometry::distance2D(rollout.x, rollout.y, target_x, target_y);
@@ -228,8 +262,9 @@ bool Planner5D::computeVelocityCommands(geometry_msgs::Twist& cmd_vel)
           std::fabs(geometry::normalizeAngle(desired_heading - rollout.theta));
       const double score = 4.0 * target_dist
                          + 1.2 * final_goal_dist
+                         + path_follow_weight_ * path_dist
                          + 0.6 * heading_error
-                         - 0.2 * v
+                         - 0.2 * std::fabs(v)
                          + proximity_penalty;
 
       if (score < best_score)
@@ -244,19 +279,32 @@ bool Planner5D::computeVelocityCommands(geometry_msgs::Twist& cmd_vel)
 
   if (!found)
   {
-    // Alternate rotation direction every 1.2 s to escape symmetric dead-ends.
     const ros::Time now = ros::Time::now();
-    if ((now - last_rotation_switch_).toSec() > 1.2)
+    if ((now - last_escape_switch_).toSec() > 1.5)
     {
-      rotation_sign_         = -rotation_sign_;
-      last_rotation_switch_  = now;
+      escape_mode_ = (escape_mode_ + 1) % 3;
+      last_escape_switch_ = now;
+      if (escape_mode_ == 2)
+      {
+        rotation_sign_ = -rotation_sign_;
+      }
     }
-    ROS_WARN_THROTTLE(1.0, "Planner5D found no collision-free rollout; rotating in place (dir=%d)",
-                      rotation_sign_);
-    cmd_vel.angular.z = rotation_sign_ * 0.5 * max_vel_theta_;
+
+    if (escape_mode_ == 0 && min_vel_x_ < 0.0)
+    {
+      ROS_WARN_THROTTLE(1.0, "Planner5D: backing up to escape narrow area");
+      cmd_vel.linear.x = std::max(min_vel_x_, -0.10);
+      cmd_vel.angular.z = 0.0;
+      return true;
+    }
+
+    ROS_WARN_THROTTLE(1.0, "Planner5D: rotating in place (dir=%d)", rotation_sign_);
+    cmd_vel.linear.x = 0.0;
+    cmd_vel.angular.z = rotation_sign_ * 0.45 * max_vel_theta_;
     return true;
   }
 
+  escape_mode_ = 0;
   cmd_vel.linear.x = best_v;
   cmd_vel.angular.z = best_omega;
   return true;
@@ -286,15 +334,11 @@ bool Planner5D::isCollision(const State5D& s) const
   }
 
   costmap_2d::Costmap2D* costmap = costmap_ros_->getCostmap();
-  unsigned int mx = 0;
-  unsigned int my = 0;
-  if (!costmap->worldToMap(s.x, s.y, mx, my))
-  {
-    return true;
-  }
+  base_local_planner::CostmapModel world_model(*costmap);
+  const double footprint_cost =
+      world_model.footprintCost(s.x, s.y, s.theta, costmap_ros_->getRobotFootprint());
 
-  const unsigned char cost = costmap->getCost(mx, my);
-  return cost >= costmap_2d::INSCRIBED_INFLATED_OBSTACLE;
+  return footprint_cost < 0.0;
 }
 
 State5D Planner5D::getCurrentState() const

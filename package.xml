@@ -20,9 +20,11 @@
   <build_depend>tf2_ros</build_depend>
   <build_depend>tf2_geometry_msgs</build_depend>
   <build_depend>nav_core</build_depend>
+  <build_depend>base_local_planner</build_depend>
   <build_depend>costmap_2d</build_depend>
   <build_depend>pluginlib</build_depend>
   <build_depend>cv_bridge</build_depend>
+  <build_depend>rospy</build_depend>
 
   <exec_depend>roscpp</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
@@ -36,14 +38,18 @@
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>tf2_geometry_msgs</exec_depend>
   <exec_depend>nav_core</exec_depend>
+  <exec_depend>base_local_planner</exec_depend>
   <exec_depend>costmap_2d</exec_depend>
   <exec_depend>pluginlib</exec_depend>
   <exec_depend>cv_bridge</exec_depend>
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>tf</exec_depend>
 
   <exec_depend>move_base</exec_depend>
   <exec_depend>amcl</exec_depend>
   <exec_depend>map_server</exec_depend>
   <exec_depend>gmapping</exec_depend>
+  <exec_depend>multirobot_map_merge</exec_depend>
   <exec_depend>global_planner</exec_depend>
   <exec_depend>dwa_local_planner</exec_depend>
   <exec_depend>gazebo_ros</exec_depend>
