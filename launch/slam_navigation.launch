@@ -1,0 +1,75 @@
+<launch>
+  <arg name="local_planner" default="dwa"/>
+
+  <group ns="robot1">
+    <node pkg="move_base" type="move_base" name="move_base" output="screen">
+      <remap from="odom" to="/robot1/odom"/>
+      <remap from="scan" to="/robot1/scan"/>
+      <remap from="cmd_vel" to="/robot1/cmd_vel"/>
+      <remap from="map" to="/map"/>
+      <rosparam file="$(find ctf_navigation)/params/move_base.yaml" command="load"/>
+      <rosparam file="$(find ctf_navigation)/params/costmap_common.yaml"
+                command="load" ns="global_costmap"/>
+      <rosparam file="$(find ctf_navigation)/params/costmap_common.yaml"
+                command="load" ns="local_costmap"/>
+      <rosparam file="$(find ctf_navigation)/params/costmap_global_slam.yaml"
+                command="load" ns="global_costmap"/>
+      <rosparam file="$(find ctf_navigation)/params/costmap_local.yaml"
+                command="load" ns="local_costmap"/>
+      <param name="global_costmap/robot_base_frame" value="robot1/base_footprint"/>
+      <param name="local_costmap/robot_base_frame" value="robot1/base_footprint"/>
+      <param name="local_costmap/global_frame" value="robot1/odom"/>
+      <param name="local_costmap/obstacle_layer/scan/topic" value="/robot1/scan"/>
+      <param name="local_costmap/obstacle_layer/other_robot/topic" value="/robot1/other_robot_cloud"/>
+      <param name="base_global_planner" value="global_planner/GlobalPlanner"/>
+      <rosparam file="$(find ctf_navigation)/params/planner_global.yaml"
+                command="load" ns="GlobalPlanner"/>
+      <param if="$(eval arg('local_planner') == '5d')"
+             name="base_local_planner" value="ctf_navigation/Planner5D"/>
+      <rosparam if="$(eval arg('local_planner') == '5d')"
+                file="$(find ctf_navigation)/params/planner_local_5d.yaml"
+                command="load" ns="Planner5D"/>
+      <param unless="$(eval arg('local_planner') == '5d')"
+             name="base_local_planner" value="dwa_local_planner/DWAPlannerROS"/>
+      <rosparam unless="$(eval arg('local_planner') == '5d')"
+                file="$(find ctf_navigation)/params/planner_local_dwa.yaml"
+                command="load" ns="DWAPlannerROS"/>
+    </node>
+  </group>
+
+  <group ns="robot2">
+    <node pkg="move_base" type="move_base" name="move_base" output="screen">
+      <remap from="odom" to="/robot2/odom"/>
+      <remap from="scan" to="/robot2/scan"/>
+      <remap from="cmd_vel" to="/robot2/cmd_vel"/>
+      <remap from="map" to="/map"/>
+      <rosparam file="$(find ctf_navigation)/params/move_base.yaml" command="load"/>
+      <rosparam file="$(find ctf_navigation)/params/costmap_common.yaml"
+                command="load" ns="global_costmap"/>
+      <rosparam file="$(find ctf_navigation)/params/costmap_common.yaml"
+                command="load" ns="local_costmap"/>
+      <rosparam file="$(find ctf_navigation)/params/costmap_global_slam.yaml"
+                command="load" ns="global_costmap"/>
+      <rosparam file="$(find ctf_navigation)/params/costmap_local.yaml"
+                command="load" ns="local_costmap"/>
+      <param name="global_costmap/robot_base_frame" value="robot2/base_footprint"/>
+      <param name="local_costmap/robot_base_frame" value="robot2/base_footprint"/>
+      <param name="local_costmap/global_frame" value="robot2/odom"/>
+      <param name="local_costmap/obstacle_layer/scan/topic" value="/robot2/scan"/>
+      <param name="local_costmap/obstacle_layer/other_robot/topic" value="/robot2/other_robot_cloud"/>
+      <param name="base_global_planner" value="global_planner/GlobalPlanner"/>
+      <rosparam file="$(find ctf_navigation)/params/planner_global.yaml"
+                command="load" ns="GlobalPlanner"/>
+      <param if="$(eval arg('local_planner') == '5d')"
+             name="base_local_planner" value="ctf_navigation/Planner5D"/>
+      <rosparam if="$(eval arg('local_planner') == '5d')"
+                file="$(find ctf_navigation)/params/planner_local_5d.yaml"
+                command="load" ns="Planner5D"/>
+      <param unless="$(eval arg('local_planner') == '5d')"
+             name="base_local_planner" value="dwa_local_planner/DWAPlannerROS"/>
+      <rosparam unless="$(eval arg('local_planner') == '5d')"
+                file="$(find ctf_navigation)/params/planner_local_dwa.yaml"
+                command="load" ns="DWAPlannerROS"/>
+    </node>
+  </group>
+</launch>

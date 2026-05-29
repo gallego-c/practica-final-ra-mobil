@@ -34,6 +34,7 @@ Optional launches:
 - Gazebo only (two robots, no navigation): `roslaunch ctf_navigation simulation.launch`
 - Navigation on the CTF map: `roslaunch ctf_navigation navigation.launch`
 - SLAM with gmapping: `roslaunch ctf_navigation gmapping.launch`
+- Shared SLAM scaffold: `roslaunch ctf_navigation slam_demo.launch run_demo:=false`
 
 Demo arguments (example):
 ```bash

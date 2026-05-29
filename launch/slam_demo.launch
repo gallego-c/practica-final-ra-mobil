@@ -1,0 +1,46 @@
+<launch>
+  <arg name="local_planner" default="dwa"/>
+  <arg name="run_demo" default="true"/>
+  <arg name="use_map_merger" default="true"/>
+  <arg name="publish_tf_bridges" default="true"/>
+
+  <include file="$(find ctf_navigation)/launch/simulation.launch"/>
+
+  <include file="$(find ctf_navigation)/launch/shared_slam.launch">
+    <arg name="use_map_merger" value="$(arg use_map_merger)"/>
+    <arg name="publish_tf_bridges" value="$(arg publish_tf_bridges)"/>
+  </include>
+
+  <!-- Reuse the existing dynamic obstacle publisher once the shared /map frame
+       is available. -->
+  <node pkg="ctf_navigation" type="robot_obstacle_publisher.py"
+        name="robot_obstacle_publisher" output="screen"/>
+
+  <include file="$(find ctf_navigation)/launch/slam_navigation.launch">
+    <arg name="local_planner" value="$(arg local_planner)"/>
+  </include>
+
+  <!-- The game node still uses fixed goals in /map. Keep it optional while the
+       shared map alignment is being tuned. -->
+  <node if="$(arg run_demo)" pkg="ctf_navigation" type="ctf_demo_node"
+        name="ctf_demo_node" output="screen">
+    <param name="frame" value="map"/>
+    <param name="robot1_ns" value="robot1"/>
+    <param name="robot2_ns" value="robot2"/>
+    <param name="robot1_base_frame" value="robot1/base_footprint"/>
+    <param name="robot2_base_frame" value="robot2/base_footprint"/>
+    <param name="flag_x" value="-3.2"/>
+    <param name="flag_y" value="3.2"/>
+    <param name="flag_yaw" value="1.57"/>
+    <param name="robot1_base_x" value="-3.0"/>
+    <param name="robot1_base_y" value="-3.0"/>
+    <param name="robot1_base_yaw" value="0.0"/>
+    <param name="robot2_base_x" value="3.0"/>
+    <param name="robot2_base_y" value="3.0"/>
+    <param name="robot2_base_yaw" value="3.1416"/>
+    <param name="catch_distance" value="0.65"/>
+    <param name="flag_capture_distance" value="0.45"/>
+    <param name="chase_rate_hz" value="1.0"/>
+    <param name="goal_timeout" value="180.0"/>
+  </node>
+</launch>
