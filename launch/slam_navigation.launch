@@ -16,7 +16,7 @@
                 command="load" ns="local_costmap"/>
       <rosparam file="$(find ctf_navigation)/params/costmap_global_slam.yaml"
                 command="load" ns="global_costmap"/>
-      <rosparam file="$(find ctf_navigation)/params/costmap_local.yaml"
+      <rosparam file="$(find ctf_navigation)/params/costmap_local_slam.yaml"
                 command="load" ns="local_costmap"/>
       <param name="global_costmap/robot_base_frame" value="robot1/base_footprint"/>
       <param name="local_costmap/robot_base_frame" value="robot1/base_footprint"/>
@@ -37,7 +37,7 @@
       <param unless="$(eval arg('local_planner') == '5d')"
              name="base_local_planner" value="dwa_local_planner/DWAPlannerROS"/>
       <rosparam unless="$(eval arg('local_planner') == '5d')"
-                file="$(find ctf_navigation)/params/planner_local_dwa.yaml"
+                file="$(find ctf_navigation)/params/planner_local_dwa_slam.yaml"
                 command="load" ns="DWAPlannerROS"/>
     </node>
   </group>
@@ -55,7 +55,7 @@
                 command="load" ns="local_costmap"/>
       <rosparam file="$(find ctf_navigation)/params/costmap_global_slam.yaml"
                 command="load" ns="global_costmap"/>
-      <rosparam file="$(find ctf_navigation)/params/costmap_local.yaml"
+      <rosparam file="$(find ctf_navigation)/params/costmap_local_slam.yaml"
                 command="load" ns="local_costmap"/>
       <param name="global_costmap/robot_base_frame" value="robot2/base_footprint"/>
       <param name="local_costmap/robot_base_frame" value="robot2/base_footprint"/>
@@ -76,7 +76,7 @@
       <param unless="$(eval arg('local_planner') == '5d')"
              name="base_local_planner" value="dwa_local_planner/DWAPlannerROS"/>
       <rosparam unless="$(eval arg('local_planner') == '5d')"
-                file="$(find ctf_navigation)/params/planner_local_dwa.yaml"
+                file="$(find ctf_navigation)/params/planner_local_dwa_slam.yaml"
                 command="load" ns="DWAPlannerROS"/>
     </node>
   </group>

@@ -4,16 +4,17 @@
   <arg name="world_frame" default="world"/>
   <arg name="merged_map_topic" default="/merged_map"/>
 
-  <arg name="robot1_init_x" default="-3.0"/>
-  <arg name="robot1_init_y" default="-3.0"/>
+  <arg name="robot1_init_x" default="0.0"/>
+  <arg name="robot1_init_y" default="0.0"/>
   <arg name="robot1_init_yaw" default="0.0"/>
-  <arg name="robot2_init_x" default="3.0"/>
-  <arg name="robot2_init_y" default="3.0"/>
-  <arg name="robot2_init_yaw" default="3.1416"/>
+  <arg name="robot2_init_x" default="0.0"/>
+  <arg name="robot2_init_y" default="0.0"/>
+  <arg name="robot2_init_yaw" default="0.0"/>
 
-  <!-- Initial robot poses in the common world frame. These values match the
-       spawn positions in simulation.launch and feed multirobot_map_merge's
-       known-initial-pose mode. -->
+  <!-- Initial map poses for multirobot_map_merge. In this Gazebo setup the
+       TurtleBot3 odometry already carries the spawn offset, so the per-robot
+       gmapping maps are already in a common coordinate convention. Keep these
+       at zero unless you confirm the individual maps are local to each robot. -->
   <param name="/robot1/map_merge/init_pose_x" value="$(arg robot1_init_x)"/>
   <param name="/robot1/map_merge/init_pose_y" value="$(arg robot1_init_y)"/>
   <param name="/robot1/map_merge/init_pose_z" value="0.0"/>
@@ -24,14 +25,17 @@
   <param name="/robot2/map_merge/init_pose_z" value="0.0"/>
   <param name="/robot2/map_merge/init_pose_yaw" value="$(arg robot2_init_yaw)"/>
 
-  <!-- TF bridges from the shared world frame into each robot's SLAM map frame. -->
+  <!-- TF bridges for visualization and consumers that need a complete tree.
+       Do not apply init_pose here: multirobot_map_merge already uses the
+       init_pose_* params below to place each occupancy grid in world. Applying
+       the spawn pose in both places shifts/rotates the merged map twice. -->
   <node pkg="tf2_ros" type="static_transform_publisher"
         name="world_to_robot1_map"
-        args="$(arg robot1_init_x) $(arg robot1_init_y) 0 $(arg robot1_init_yaw) 0 0 $(arg world_frame) $(arg robot1_map_frame)"/>
+        args="0 0 0 0 0 0 $(arg world_frame) $(arg robot1_map_frame)"/>
 
   <node pkg="tf2_ros" type="static_transform_publisher"
         name="world_to_robot2_map"
-        args="$(arg robot2_init_x) $(arg robot2_init_y) 0 $(arg robot2_init_yaw) 0 0 $(arg world_frame) $(arg robot2_map_frame)"/>
+        args="0 0 0 0 0 0 $(arg world_frame) $(arg robot2_map_frame)"/>
 
   <node pkg="multirobot_map_merge" type="map_merge"
         name="map_merge" output="screen">
@@ -42,6 +46,8 @@
     <param name="known_init_poses" value="true"/>
     <param name="known_init_pose" value="true"/>
     <param name="merging_rate" value="0.5"/>
-    <param name="discovery_rate" value="0.05"/>
+    <param name="discovery_rate" value="1.0"/>
+    <param name="estimation_rate" value="0.1"/>
+    <param name="estimation_confidence" value="1.0"/>
   </node>
 </launch>

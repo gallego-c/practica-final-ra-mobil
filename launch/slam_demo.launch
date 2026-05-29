@@ -4,16 +4,44 @@
   <arg name="world_frame" default="world"/>
   <arg name="merged_map_topic" default="/merged_map"/>
 
-  <include file="$(find ctf_navigation)/launch/simulation.launch"/>
+  <arg name="robot1_x" default="-3.0"/>
+  <arg name="robot1_y" default="-3.0"/>
+  <arg name="robot1_yaw" default="0.0"/>
+  <arg name="robot2_x" default="3.0"/>
+  <arg name="robot2_y" default="3.0"/>
+  <arg name="robot2_yaw" default="3.1416"/>
+
+  <arg name="robot1_map_init_x" default="0.0"/>
+  <arg name="robot1_map_init_y" default="0.0"/>
+  <arg name="robot1_map_init_yaw" default="0.0"/>
+  <arg name="robot2_map_init_x" default="0.0"/>
+  <arg name="robot2_map_init_y" default="0.0"/>
+  <arg name="robot2_map_init_yaw" default="0.0"/>
+
+  <include file="$(find ctf_navigation)/launch/simulation.launch">
+    <arg name="robot1_x" value="$(arg robot1_x)"/>
+    <arg name="robot1_y" value="$(arg robot1_y)"/>
+    <arg name="robot1_yaw" value="$(arg robot1_yaw)"/>
+    <arg name="robot2_x" value="$(arg robot2_x)"/>
+    <arg name="robot2_y" value="$(arg robot2_y)"/>
+    <arg name="robot2_yaw" value="$(arg robot2_yaw)"/>
+  </include>
 
   <include file="$(find ctf_navigation)/launch/shared_slam.launch">
     <arg name="world_frame" value="$(arg world_frame)"/>
     <arg name="merged_map_topic" value="$(arg merged_map_topic)"/>
+    <arg name="robot1_init_x" value="$(arg robot1_map_init_x)"/>
+    <arg name="robot1_init_y" value="$(arg robot1_map_init_y)"/>
+    <arg name="robot1_init_yaw" value="$(arg robot1_map_init_yaw)"/>
+    <arg name="robot2_init_x" value="$(arg robot2_map_init_x)"/>
+    <arg name="robot2_init_y" value="$(arg robot2_map_init_y)"/>
+    <arg name="robot2_init_yaw" value="$(arg robot2_map_init_yaw)"/>
   </include>
 
   <node pkg="ctf_navigation" type="robot_obstacle_publisher.py"
         name="robot_obstacle_publisher" output="screen">
     <param name="target_frame" value="$(arg world_frame)"/>
+    <param name="robot_radius" value="0.38"/>
   </node>
 
   <include file="$(find ctf_navigation)/launch/slam_navigation.launch">
@@ -34,12 +62,13 @@
     <param name="flag_x" value="-3.2"/>
     <param name="flag_y" value="3.2"/>
     <param name="flag_yaw" value="1.57"/>
-    <param name="robot1_base_x" value="-3.0"/>
-    <param name="robot1_base_y" value="-3.0"/>
-    <param name="robot1_base_yaw" value="0.0"/>
-    <param name="robot2_base_x" value="3.0"/>
-    <param name="robot2_base_y" value="3.0"/>
-    <param name="robot2_base_yaw" value="3.1416"/>
+    <param name="search_goal_separation" value="0.65"/>
+    <param name="robot1_base_x" value="$(arg robot1_x)"/>
+    <param name="robot1_base_y" value="$(arg robot1_y)"/>
+    <param name="robot1_base_yaw" value="$(arg robot1_yaw)"/>
+    <param name="robot2_base_x" value="$(arg robot2_x)"/>
+    <param name="robot2_base_y" value="$(arg robot2_y)"/>
+    <param name="robot2_base_yaw" value="$(arg robot2_yaw)"/>
     <param name="catch_distance" value="0.65"/>
     <param name="flag_capture_distance" value="0.45"/>
     <param name="chase_rate_hz" value="1.0"/>

@@ -34,6 +34,7 @@ struct GameConfig
   double flag_x;
   double flag_y;
   double flag_yaw;
+  double search_goal_separation;
   double flag_capture_distance;
   double catch_distance;
   double chase_rate_hz;
@@ -85,6 +86,41 @@ double distanceToPoint(const geometry_msgs::TransformStamped& transform,
                        double y)
 {
   return distance2D(transform.transform.translation.x, transform.transform.translation.y, x, y);
+}
+
+move_base_msgs::MoveBaseGoal makeApproachGoal(const GameConfig& game,
+                                              const RobotConfig& robot,
+                                              int robot_index)
+{
+  if (game.search_goal_separation <= 0.0)
+  {
+    return makeGoal(game.frame, game.flag_x, game.flag_y, game.flag_yaw);
+  }
+
+  double dx = robot.home_x - game.flag_x;
+  double dy = robot.home_y - game.flag_y;
+  const double length = std::sqrt(dx * dx + dy * dy);
+  if (length < 1e-3)
+  {
+    dx = (robot_index == 0) ? -1.0 : 1.0;
+    dy = 0.0;
+  }
+  else
+  {
+    dx /= length;
+    dy /= length;
+  }
+
+  const double side = (robot_index == 0) ? 1.0 : -1.0;
+  const double offset_x = dx * game.search_goal_separation;
+  const double offset_y = dy * game.search_goal_separation;
+  const double lateral_x = -dy * game.search_goal_separation * 0.5 * side;
+  const double lateral_y = dx * game.search_goal_separation * 0.5 * side;
+
+  return makeGoal(game.frame,
+                  game.flag_x + offset_x + lateral_x,
+                  game.flag_y + offset_y + lateral_y,
+                  game.flag_yaw);
 }
 
 visualization_msgs::Marker makeCylinderMarker(const std::string& frame,
@@ -179,7 +215,7 @@ int runSearchPhase(const GameConfig& game,
 
   for (int i = 0; i < 2; ++i)
   {
-    clients[i]->sendGoal(makeGoal(game.frame, game.flag_x, game.flag_y, game.flag_yaw));
+    clients[i]->sendGoal(makeApproachGoal(game, robots[i], i));
   }
 
   ros::Rate rate(std::max(0.2, game.chase_rate_hz));
@@ -322,6 +358,7 @@ int main(int argc, char** argv)
   pnh.param("flag_x", game.flag_x, -3.2);
   pnh.param("flag_y", game.flag_y, 3.2);
   pnh.param("flag_yaw", game.flag_yaw, 1.57);
+  pnh.param("search_goal_separation", game.search_goal_separation, 0.0);
   pnh.param("flag_capture_distance", game.flag_capture_distance, 0.45);
   pnh.param("catch_distance", game.catch_distance, 0.65);
   pnh.param("chase_rate_hz", game.chase_rate_hz, 1.0);
