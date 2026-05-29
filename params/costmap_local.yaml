@@ -1,0 +1,22 @@
+global_frame: odom
+robot_base_frame: base_footprint
+update_frequency:  15.0
+publish_frequency:  8.0
+static_map: false
+rolling_window: true
+width:  4.5
+height: 4.5
+resolution: 0.05
+transform_tolerance: 0.5
+plugins:
+  - {name: obstacle_layer, type: "costmap_2d::ObstacleLayer"}
+  - {name: inflation_layer, type: "costmap_2d::InflationLayer"}
+
+# Override inflation for the LOCAL costmap.
+# The local costmap uses a SMALLER inflation radius than the global (0.25m)
+# so the DWA has enough valid trajectories to execute the global plan near
+# wall ends without oscillating.  The footprint-based collision check in
+# DWA still prevents physical contact regardless of this value.
+inflation_layer:
+  inflation_radius:    0.15
+  cost_scaling_factor: 5.0

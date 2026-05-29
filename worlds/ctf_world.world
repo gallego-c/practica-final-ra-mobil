@@ -1,0 +1,134 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="ctf_world">
+
+    <include><uri>model://sun</uri></include>
+    <include><uri>model://ground_plane</uri></include>
+
+    <!-- Paredes exteriores 10x10 -->
+    <model name="wall_north">
+      <static>true</static><pose>0 5 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>10 0.1 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>10 0.1 1</size></box></geometry></visual>
+      </link>
+    </model>
+    <model name="wall_south">
+      <static>true</static><pose>0 -5 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>10 0.1 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>10 0.1 1</size></box></geometry></visual>
+      </link>
+    </model>
+    <model name="wall_east">
+      <static>true</static><pose>5 0 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.1 10 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.1 10 1</size></box></geometry></visual>
+      </link>
+    </model>
+    <model name="wall_west">
+      <static>true</static><pose>-5 0 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.1 10 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.1 10 1</size></box></geometry></visual>
+      </link>
+    </model>
+
+    <!-- Pared central con hueco (dos segmentos) -->
+    <model name="wall_center_left">
+      <static>true</static><pose>-2.75 0 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>3.5 0.2 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>3.5 0.2 1</size></box></geometry></visual>
+      </link>
+    </model>
+    <model name="wall_center_right">
+      <static>true</static><pose>2.75 0 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>3.5 0.2 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>3.5 0.2 1</size></box></geometry></visual>
+      </link>
+    </model>
+
+    <!-- Obstáculos zona robot1 (inferior izquierda) -->
+    <model name="obs_1"><static>true</static><pose>-3 -2 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>1.5 0.2 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>1.5 0.2 1</size></box></geometry></visual>
+      </link>
+    </model>
+    <model name="obs_2"><static>true</static><pose>-1.5 -3.5 0.5 0 0 1.5707</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>1.5 0.2 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>1.5 0.2 1</size></box></geometry></visual>
+      </link>
+    </model>
+
+    <!-- Obstáculos zona robot2 (superior derecha) -->
+    <model name="obs_3"><static>true</static><pose>3 2 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>1.5 0.2 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>1.5 0.2 1</size></box></geometry></visual>
+      </link>
+    </model>
+    <model name="obs_4"><static>true</static><pose>1.5 3.5 0.5 0 0 1.5707</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>1.5 0.2 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>1.5 0.2 1</size></box></geometry></visual>
+      </link>
+    </model>
+
+    <!-- Columnas centrales -->
+    <model name="col_1"><static>true</static><pose>-1 1.5 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.3 0.3 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.3 0.3 1</size></box></geometry></visual>
+      </link>
+    </model>
+    <model name="col_2"><static>true</static><pose>1 -1.5 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.3 0.3 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.3 0.3 1</size></box></geometry></visual>
+      </link>
+    </model>
+
+    <model name="ctf_flag">
+      <static>true</static>
+      <pose>-3.2 3.2 0 0 0 0</pose>
+      <link name="flag_link">
+        <visual name="pole">
+          <pose>0 0 0.45 0 0 0</pose>
+          <geometry>
+            <cylinder><radius>0.025</radius><length>0.9</length></cylinder>
+          </geometry>
+          <material>
+            <ambient>0.05 0.05 0.05 1</ambient>
+            <diffuse>0.05 0.05 0.05 1</diffuse>
+          </material>
+        </visual>
+        <visual name="cloth">
+          <pose>0.18 0 0.72 0 0 0</pose>
+          <geometry>
+            <box><size>0.36 0.02 0.24</size></box>
+          </geometry>
+          <material>
+            <ambient>1 0.05 0.05 1</ambient>
+            <diffuse>1 0.05 0.05 1</diffuse>
+          </material>
+        </visual>
+        <visual name="base_marker">
+          <pose>0 0 0.01 0 0 0</pose>
+          <geometry>
+            <cylinder><radius>0.18</radius><length>0.02</length></cylinder>
+          </geometry>
+          <material>
+            <ambient>1 0.05 0.05 0.8</ambient>
+            <diffuse>1 0.05 0.05 0.8</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+  </world>
+</sdf>
