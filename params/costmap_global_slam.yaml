@@ -1,13 +1,9 @@
-global_frame: world
+global_frame: map
 robot_base_frame: base_footprint
 update_frequency: 2.0
 publish_frequency: 1.0
 static_map: true
 rolling_window: false
-width: 10.0
-height: 10.0
-origin_x: -5.0
-origin_y: -5.0
 transform_tolerance: 1.0
 plugins:
   - {name: static_layer, type: "costmap_2d::StaticLayer"}
@@ -18,5 +14,9 @@ static_layer:
   subscribe_to_updates: true
   track_unknown_space: true
 
-# Same global inflation as the known-map navigation, kept in a separate file so
-# the SLAM branch can tune map handling without touching the stable demo.
+inflation_layer:
+  inflation_radius: 0.18
+  cost_scaling_factor: 8.0
+
+# No fixed width/height/origin here: the global costmap must adopt the merged
+# map bounds exactly, otherwise obstacles appear shifted from the SLAM map.

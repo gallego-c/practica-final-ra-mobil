@@ -1,7 +1,7 @@
 <launch>
   <arg name="robot1_map_frame" default="robot1/map"/>
   <arg name="robot2_map_frame" default="robot2/map"/>
-  <arg name="world_frame" default="world"/>
+  <arg name="world_frame" default="map"/>
   <arg name="merged_map_topic" default="/merged_map"/>
 
   <arg name="robot1_init_x" default="0.0"/>

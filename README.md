@@ -38,6 +38,18 @@ Optional launches:
 - Map merge only: `roslaunch ctf_navigation map_merge.launch`
 - Shared SLAM with known initial poses: `roslaunch ctf_navigation slam_demo.launch run_demo:=false`
 
+SLAM demo — maximize map coverage, then optional CTF:
+```bash
+# Exploration only (no flag/chase):
+roslaunch ctf_navigation slam_demo.launch run_ctf:=false
+
+# Exploration + CTF after ~72% map coverage:
+roslaunch ctf_navigation slam_demo.launch local_planner:=5d run_demo:=true
+```
+
+Exploration stops when coverage ≥ 72% or no frontiers remain (up to 5 min).
+Each robot picks its own frontiers (Voronoi split) so they spread across the arena.
+
 Demo arguments (example):
 ```bash
 roslaunch ctf_navigation ctf_demo.launch local_planner:=5d localization:=static run_demo:=true

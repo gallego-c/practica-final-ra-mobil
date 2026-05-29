@@ -1,12 +1,15 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <vector>
 
 #include <actionlib/client/simple_action_client.h>
 #include <geometry_msgs/Quaternion.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <move_base_msgs/MoveBaseAction.h>
+#include <nav_msgs/OccupancyGrid.h>
 #include <ros/ros.h>
+#include <std_msgs/Bool.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_ros/buffer.h>
@@ -39,6 +42,17 @@ struct GameConfig
   double catch_distance;
   double chase_rate_hz;
   double goal_timeout;
+  bool guided_exploration;
+  double exploration_goal_timeout;
+  std::string wait_for_exploration_topic;
+  double exploration_wait_timeout;
+};
+
+struct Waypoint
+{
+  double x;
+  double y;
+  double yaw;
 };
 
 geometry_msgs::Quaternion yawToQuaternion(double yaw)
@@ -157,10 +171,41 @@ visualization_msgs::Marker makeCylinderMarker(const std::string& frame,
   return marker;
 }
 
+visualization_msgs::Marker makeRobotPoseMarker(const std::string& frame,
+                                               const std::string& ns,
+                                               int id,
+                                               const geometry_msgs::TransformStamped& pose,
+                                               float r,
+                                               float g,
+                                               float b)
+{
+  visualization_msgs::Marker marker;
+  marker.header.frame_id = frame;
+  marker.header.stamp = ros::Time::now();
+  marker.ns = ns;
+  marker.id = id;
+  marker.type = visualization_msgs::Marker::ARROW;
+  marker.action = visualization_msgs::Marker::ADD;
+  marker.pose.position.x = pose.transform.translation.x;
+  marker.pose.position.y = pose.transform.translation.y;
+  marker.pose.position.z = 0.15;
+  marker.pose.orientation = pose.transform.rotation;
+  marker.scale.x = 0.45;
+  marker.scale.y = 0.08;
+  marker.scale.z = 0.08;
+  marker.color.r = r;
+  marker.color.g = g;
+  marker.color.b = b;
+  marker.color.a = 1.0f;
+  marker.lifetime = ros::Duration(0.5);
+  return marker;
+}
+
 void publishMarkers(ros::Publisher& pub,
                     const GameConfig& game,
                     const RobotConfig& robot1,
-                    const RobotConfig& robot2)
+                    const RobotConfig& robot2,
+                    tf2_ros::Buffer* tf_buffer = nullptr)
 {
   visualization_msgs::MarkerArray markers;
   markers.markers.push_back(makeCylinderMarker(game.frame, "ctf_flag", 0,
@@ -172,18 +217,132 @@ void publishMarkers(ros::Publisher& pub,
   markers.markers.push_back(makeCylinderMarker(game.frame, "robot2_base", 2,
                                                robot2.home_x, robot2.home_y,
                                                0.45, 0.03, 1.0f, 0.6f, 0.1f, 0.8f));
+
+  if (tf_buffer)
+  {
+    try
+    {
+      const auto robot1_pose = tf_buffer->lookupTransform(
+          game.frame, robot1.base_frame, ros::Time(0), ros::Duration(0.02));
+      markers.markers.push_back(makeRobotPoseMarker(game.frame, "robot1_pose", 3,
+                                                    robot1_pose, 0.1f, 0.5f, 1.0f));
+    }
+    catch (const tf2::TransformException&)
+    {
+    }
+
+    try
+    {
+      const auto robot2_pose = tf_buffer->lookupTransform(
+          game.frame, robot2.base_frame, ros::Time(0), ros::Duration(0.02));
+      markers.markers.push_back(makeRobotPoseMarker(game.frame, "robot2_pose", 4,
+                                                    robot2_pose, 1.0f, 0.6f, 0.1f));
+    }
+    catch (const tf2::TransformException&)
+    {
+    }
+  }
+
   pub.publish(markers);
 }
 
-bool waitForServer(MoveBaseClient& client, const std::string& name)
+bool waitForServer(MoveBaseClient& client, const std::string& name, double timeout_sec)
 {
-  ROS_INFO("Waiting for %s move_base action server...", name.c_str());
-  if (!client.waitForServer(ros::Duration(60.0)))
+  ROS_INFO("Waiting for %s move_base action server (%.0f s)...",
+           name.c_str(), timeout_sec);
+  if (!client.waitForServer(ros::Duration(timeout_sec)))
   {
     ROS_ERROR("Timed out waiting for %s move_base", name.c_str());
     return false;
   }
   return true;
+}
+
+bool waitForNavigationMap(const std::string& topic,
+                          double timeout_sec,
+                          unsigned int min_width,
+                          unsigned int min_known_cells)
+{
+  if (topic.empty())
+  {
+    return true;
+  }
+
+  nav_msgs::OccupancyGrid::ConstPtr map;
+  ros::NodeHandle nh;
+  const ros::Subscriber sub =
+      nh.subscribe<nav_msgs::OccupancyGrid>(topic, 1,
+                                            [&map](const nav_msgs::OccupancyGrid::ConstPtr& msg) {
+                                              map = msg;
+                                            });
+
+  ROS_INFO("Waiting for navigation map on %s...", topic.c_str());
+  const ros::Time deadline = ros::Time::now() + ros::Duration(timeout_sec);
+  ros::Rate rate(5.0);
+
+  while (ros::ok() && ros::Time::now() < deadline)
+  {
+    ros::spinOnce();
+    if (map && map->info.width >= min_width && map->info.height >= min_width)
+    {
+      int known_cells = 0;
+      for (const int value : map->data)
+      {
+        if (value >= 0)
+        {
+          ++known_cells;
+        }
+      }
+
+      if (static_cast<unsigned int>(known_cells) >= min_known_cells)
+      {
+        ROS_INFO("Navigation map ready on %s (%ux%u, %d known cells)",
+                 topic.c_str(), map->info.width, map->info.height, known_cells);
+        return true;
+      }
+    }
+    rate.sleep();
+  }
+
+  ROS_WARN("Timed out waiting for navigation map on %s", topic.c_str());
+  return false;
+}
+
+bool waitForExplorationComplete(const std::string& topic, double timeout_sec)
+{
+  if (topic.empty())
+  {
+    return true;
+  }
+
+  bool done = false;
+  ros::NodeHandle nh;
+  const ros::Subscriber sub =
+      nh.subscribe<std_msgs::Bool>(topic, 1,
+                                   [&done](const std_msgs::Bool::ConstPtr& msg) {
+                                     if (msg->data)
+                                     {
+                                       done = true;
+                                     }
+                                   });
+
+  ROS_INFO("Waiting for frontier exploration on %s...", topic.c_str());
+  const ros::Time deadline = ros::Time::now() + ros::Duration(timeout_sec);
+  ros::Rate rate(5.0);
+
+  while (ros::ok() && ros::Time::now() < deadline)
+  {
+    ros::spinOnce();
+    if (done)
+    {
+      ROS_INFO("Frontier exploration complete");
+      return true;
+    }
+    rate.sleep();
+  }
+
+  ROS_WARN("Timed out waiting for exploration on %s; continuing anyway", topic.c_str());
+  return false;
 }
 
 bool lookupRobotPose(tf2_ros::Buffer& tf_buffer,
@@ -204,6 +363,162 @@ bool lookupRobotPose(tf2_ros::Buffer& tf_buffer,
   }
 }
 
+bool waitForRobotPoses(tf2_ros::Buffer& tf_buffer,
+                       const GameConfig& game,
+                       const RobotConfig robots[2],
+                       double timeout_sec)
+{
+  const ros::Time deadline = ros::Time::now() + ros::Duration(timeout_sec);
+  ros::Rate rate(5.0);
+
+  while (ros::ok() && ros::Time::now() < deadline)
+  {
+    geometry_msgs::TransformStamped poses[2];
+    if (lookupRobotPose(tf_buffer, game, robots[0], poses[0]) &&
+        lookupRobotPose(tf_buffer, game, robots[1], poses[1]))
+    {
+      const double separation = distanceBetween(poses[0], poses[1]);
+      ROS_INFO("Both robots localized in %s (separation %.2f m)",
+               game.frame.c_str(), separation);
+      return true;
+    }
+    rate.sleep();
+  }
+
+  ROS_WARN("Timed out waiting for both robot poses in %s", game.frame.c_str());
+  return false;
+}
+
+bool waitForGoal(MoveBaseClient& client,
+                 double timeout_sec,
+                 const std::string& label,
+                 ros::Publisher& marker_pub,
+                 const GameConfig& game,
+                 const RobotConfig robots[2],
+                 tf2_ros::Buffer& tf_buffer)
+{
+  const ros::Time start = ros::Time::now();
+  ros::Rate rate(std::max(2.0, game.chase_rate_hz));
+  while (ros::ok())
+  {
+    ros::spinOnce();
+    publishMarkers(marker_pub, game, robots[0], robots[1], &tf_buffer);
+
+    const auto state = client.getState();
+    if (state.isDone())
+    {
+      if (isSucceeded(state))
+      {
+        ROS_INFO("%s reached", label.c_str());
+        return true;
+      }
+
+      ROS_WARN("%s finished with state %s", label.c_str(), state.toString().c_str());
+      return false;
+    }
+
+    if ((ros::Time::now() - start).toSec() > timeout_sec)
+    {
+      ROS_WARN("%s timed out; cancelling and continuing", label.c_str());
+      client.cancelGoal();
+      return false;
+    }
+
+    rate.sleep();
+  }
+
+  return false;
+}
+
+void runGuidedExplorationPhase(const GameConfig& game,
+                               const RobotConfig robots[2],
+                               MoveBaseClient* clients[2],
+                               tf2_ros::Buffer& tf_buffer,
+                               ros::Publisher& marker_pub)
+{
+  if (!game.guided_exploration)
+  {
+    return;
+  }
+
+  ROS_INFO("Phase 0: parallel guided SLAM exploration");
+
+  // robot1 starts bottom-left (-3,-3).  Route: explore own zone → approach gap
+  //   left side → cross to north zone → reach flag area.
+  // robot2 starts top-right (3,3).  Route: explore own zone → approach gap
+  //   right side → help map south zone → converge on flag area.
+  // Robots pass on opposite sides of the 1-m gap (x ∈ [-1,1] @ y=0) to
+  // minimise the chance of a head-on collision.
+  //
+  // Obstacle reference (inflation 0.28 m):
+  //   col_1 centre (-1.0, 1.5) 0.3×0.3 → keep x > -0.57 near y=1.5
+  //   col_2 centre ( 1.0,-1.5) 0.3×0.3 → keep x <  0.57 near y=-1.5
+  const std::vector<Waypoint> r1 = {
+      {-2.5, -1.5,  0.00},   // away from spawn, clear of obs_1 / obs_2
+      {-0.6, -0.3,  1.57},   // south mouth of gap, left lane
+      {-0.3,  1.5,  1.57},   // north side, east of col_1 — maps flag corridor
+      {-2.8,  3.0,  1.57},   // near flag area
+  };
+  const std::vector<Waypoint> r2 = {
+      { 2.5,  1.5,  3.14},   // away from spawn, clear of obs_3 / obs_4
+      { 0.6,  0.3, -1.57},   // north mouth of gap, right lane
+      { 0.3, -1.5, -1.57},   // south side, west of col_2 — helps map robot1 zone
+      {-2.5,  2.8,  2.36},   // also approach flag area
+  };
+
+  const std::size_t n = std::max(r1.size(), r2.size());
+  ros::Rate rate(5.0);
+
+  for (std::size_t i = 0; i < n; ++i)
+  {
+    // ── Send goals to BOTH robots simultaneously ──────────────────────────
+    if (i < r1.size())
+    {
+      const auto& wp = r1[i];
+      ROS_INFO("Exploration R1[%zu]: %.2f, %.2f", i, wp.x, wp.y);
+      clients[0]->sendGoal(makeGoal(game.frame, wp.x, wp.y, wp.yaw));
+    }
+    if (i < r2.size())
+    {
+      const auto& wp = r2[i];
+      ROS_INFO("Exploration R2[%zu]: %.2f, %.2f", i, wp.x, wp.y);
+      clients[1]->sendGoal(makeGoal(game.frame, wp.x, wp.y, wp.yaw));
+    }
+
+    // ── Wait for BOTH to finish (or time-out) in a shared loop ────────────
+    const ros::Time deadline =
+        ros::Time::now() + ros::Duration(game.exploration_goal_timeout);
+
+    while (ros::ok() && ros::Time::now() < deadline)
+    {
+      ros::spinOnce();
+      publishMarkers(marker_pub, game, robots[0], robots[1], &tf_buffer);
+
+      const bool r1_pending = (i < r1.size()) && !clients[0]->getState().isDone();
+      const bool r2_pending = (i < r2.size()) && !clients[1]->getState().isDone();
+      if (!r1_pending && !r2_pending)
+        break;
+
+      rate.sleep();
+    }
+
+    if (i < r1.size() && !clients[0]->getState().isDone())
+    {
+      ROS_WARN("Exploration R1[%zu] timed out, cancelling", i);
+      clients[0]->cancelGoal();
+    }
+    if (i < r2.size() && !clients[1]->getState().isDone())
+    {
+      ROS_WARN("Exploration R2[%zu] timed out, cancelling", i);
+      clients[1]->cancelGoal();
+    }
+
+    ros::Duration(0.5).sleep();
+  }
+
+  ROS_INFO("Phase 0: guided exploration complete");
+}
+
 int runSearchPhase(const GameConfig& game,
                    const RobotConfig robots[2],
                    MoveBaseClient* clients[2],
@@ -213,10 +528,9 @@ int runSearchPhase(const GameConfig& game,
   ROS_INFO("Phase 1: both robots search. %s and %s go to flag at (%.2f, %.2f)",
            robots[0].ns.c_str(), robots[1].ns.c_str(), game.flag_x, game.flag_y);
 
-  for (int i = 0; i < 2; ++i)
-  {
-    clients[i]->sendGoal(makeApproachGoal(game, robots[i], i));
-  }
+  clients[0]->sendGoal(makeApproachGoal(game, robots[0], 0));
+  ros::Duration(2.0).sleep();
+  clients[1]->sendGoal(makeApproachGoal(game, robots[1], 1));
 
   ros::Rate rate(std::max(0.2, game.chase_rate_hz));
   const ros::Time start = ros::Time::now();
@@ -224,7 +538,7 @@ int runSearchPhase(const GameConfig& game,
   while (ros::ok())
   {
     ros::spinOnce();
-    publishMarkers(marker_pub, game, robots[0], robots[1]);
+    publishMarkers(marker_pub, game, robots[0], robots[1], &tf_buffer);
 
     bool captured_by_action[2] = {isSucceeded(clients[0]->getState()),
                                   isSucceeded(clients[1]->getState())};
@@ -295,7 +609,7 @@ int runChasePhase(const GameConfig& game,
   while (ros::ok())
   {
     ros::spinOnce();
-    publishMarkers(marker_pub, game, robots[0], robots[1]);
+    publishMarkers(marker_pub, game, robots[0], robots[1], &tf_buffer);
 
     if (carrier_client.getState().isDone())
     {
@@ -363,6 +677,27 @@ int main(int argc, char** argv)
   pnh.param("catch_distance", game.catch_distance, 0.65);
   pnh.param("chase_rate_hz", game.chase_rate_hz, 1.0);
   pnh.param("goal_timeout", game.goal_timeout, 180.0);
+  pnh.param("guided_exploration", game.guided_exploration, false);
+  pnh.param("exploration_goal_timeout", game.exploration_goal_timeout, 45.0);
+  pnh.param<std::string>("wait_for_exploration_topic", game.wait_for_exploration_topic, "");
+  pnh.param("exploration_wait_timeout", game.exploration_wait_timeout, 150.0);
+
+  std::string wait_for_map_topic;
+  pnh.param<std::string>("wait_for_map_topic", wait_for_map_topic, "");
+  double map_wait_timeout = wait_for_map_topic.empty() ? 0.0 : 90.0;
+  pnh.param("map_wait_timeout", map_wait_timeout, map_wait_timeout);
+  int map_min_width = 80;
+  pnh.param("map_min_width", map_min_width, 80);
+  int map_min_known_cells = 500;
+  pnh.param("map_min_known_cells", map_min_known_cells, 500);
+  double startup_delay = 0.0;
+  pnh.param("startup_delay", startup_delay, 0.0);
+  double pose_wait_timeout = 0.0;
+  pnh.param("pose_wait_timeout", pose_wait_timeout, 0.0);
+  double move_base_wait_timeout = 120.0;
+  pnh.param("move_base_wait_timeout", move_base_wait_timeout, 120.0);
+  double navigation_startup_delay = 0.0;
+  pnh.param("navigation_startup_delay", navigation_startup_delay, 0.0);
 
   RobotConfig robots[2];
   pnh.param<std::string>("robot1_ns", robots[0].ns, "robot1");
@@ -377,10 +712,16 @@ int main(int argc, char** argv)
   pnh.param("robot2_base_y", robots[1].home_y, 3.0);
   pnh.param("robot2_base_yaw", robots[1].home_yaw, 3.1416);
 
+  if (navigation_startup_delay > 0.0)
+  {
+    ROS_INFO("Navigation startup delay: %.1f s", navigation_startup_delay);
+    ros::Duration(navigation_startup_delay).sleep();
+  }
+
   MoveBaseClient robot1_client("/" + robots[0].ns + "/move_base", true);
   MoveBaseClient robot2_client("/" + robots[1].ns + "/move_base", true);
-  if (!waitForServer(robot1_client, robots[0].ns) ||
-      !waitForServer(robot2_client, robots[1].ns))
+  if (!waitForServer(robot1_client, robots[0].ns, move_base_wait_timeout) ||
+      !waitForServer(robot2_client, robots[1].ns, move_base_wait_timeout))
   {
     return 1;
   }
@@ -391,8 +732,37 @@ int main(int argc, char** argv)
 
   ros::Publisher marker_pub =
       nh.advertise<visualization_msgs::MarkerArray>("ctf_demo/markers", 1, true);
+
+  if (startup_delay > 0.0)
+  {
+    ROS_INFO("Startup delay: %.1f s before sending goals", startup_delay);
+    ros::Duration(startup_delay).sleep();
+  }
+
+  if (!wait_for_map_topic.empty() &&
+      !waitForNavigationMap(wait_for_map_topic, map_wait_timeout,
+                            static_cast<unsigned int>(map_min_width),
+                            static_cast<unsigned int>(map_min_known_cells)))
+  {
+    return 2;
+  }
+
+  if (pose_wait_timeout > 0.0 &&
+      !waitForRobotPoses(tf_buffer, game, robots, pose_wait_timeout))
+  {
+    return 2;
+  }
+
+  if (!game.wait_for_exploration_topic.empty())
+  {
+    waitForExplorationComplete(game.wait_for_exploration_topic,
+                               game.exploration_wait_timeout);
+  }
+
   ros::Duration(1.0).sleep();
-  publishMarkers(marker_pub, game, robots[0], robots[1]);
+  publishMarkers(marker_pub, game, robots[0], robots[1], &tf_buffer);
+
+  runGuidedExplorationPhase(game, robots, clients, tf_buffer, marker_pub);
 
   const int carrier_index = runSearchPhase(game, robots, clients, tf_buffer, marker_pub);
   if (carrier_index < 0)

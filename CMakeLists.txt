@@ -6,6 +6,7 @@ add_compile_options(-std=c++11)
 find_package(catkin REQUIRED COMPONENTS
   actionlib
   actionlib_msgs
+  base_local_planner
   costmap_2d
   geometry_msgs
   move_base_msgs
@@ -24,6 +25,7 @@ catkin_package(
   CATKIN_DEPENDS
     actionlib
     actionlib_msgs
+    base_local_planner
     costmap_2d
     geometry_msgs
     move_base_msgs
@@ -59,5 +61,6 @@ install(FILES planner_5d_plugin.xml
 
 catkin_install_python(PROGRAMS
   scripts/robot_obstacle_publisher.py
+  scripts/slam_frontier_explorer.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

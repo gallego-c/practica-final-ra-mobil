@@ -1,7 +1,7 @@
 <launch>
   <arg name="robot1_map_frame" default="robot1/map"/>
   <arg name="robot2_map_frame" default="robot2/map"/>
-  <arg name="world_frame" default="world"/>
+  <arg name="world_frame" default="map"/>
   <arg name="merged_map_topic" default="/merged_map"/>
 
   <arg name="robot1_init_x" default="0.0"/>
@@ -24,18 +24,6 @@
   <param name="/robot2/map_merge/init_pose_y" value="$(arg robot2_init_y)"/>
   <param name="/robot2/map_merge/init_pose_z" value="0.0"/>
   <param name="/robot2/map_merge/init_pose_yaw" value="$(arg robot2_init_yaw)"/>
-
-  <!-- TF bridges for visualization and consumers that need a complete tree.
-       Do not apply init_pose here: multirobot_map_merge already uses the
-       init_pose_* params below to place each occupancy grid in world. Applying
-       the spawn pose in both places shifts/rotates the merged map twice. -->
-  <node pkg="tf2_ros" type="static_transform_publisher"
-        name="world_to_robot1_map"
-        args="0 0 0 0 0 0 $(arg world_frame) $(arg robot1_map_frame)"/>
-
-  <node pkg="tf2_ros" type="static_transform_publisher"
-        name="world_to_robot2_map"
-        args="0 0 0 0 0 0 $(arg world_frame) $(arg robot2_map_frame)"/>
 
   <node pkg="multirobot_map_merge" type="map_merge"
         name="map_merge" output="screen">

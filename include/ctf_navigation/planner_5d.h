@@ -85,14 +85,17 @@ private:
     int    v_samples_;      // número de muestras de velocidad lineal
     int    omega_samples_;  // número de muestras de velocidad angular
     int    max_iterations_; // límite máximo de nodos A* expandidos
+    double path_follow_weight_;
+    double proximity_weight_;
 
     // ── Estado interno ───────────────────────────────────────────────────────
     bool initialized_;
     bool goal_reached_;
 
-    // Alternates the in-place recovery rotation direction to escape dead-ends.
+    // Escape sequence when no rollout is valid: backup, then rotate.
+    int             escape_mode_;
     int             rotation_sign_;
-    ros::Time       last_rotation_switch_;
+    ros::Time       last_escape_switch_;
 
     std::vector<geometry_msgs::PoseStamped> global_plan_;
     geometry_msgs::PoseStamped              goal_pose_;
