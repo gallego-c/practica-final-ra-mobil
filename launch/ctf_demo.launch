@@ -1,13 +1,25 @@
 <launch>
+  <!-- ==========================================================================
+       MODO ORÁCULO (pruebas de planning motion)
+       Los robots van DIRECTOS a las coordenadas de la bandera (no hay visión ni
+       exploración). Útil para probar planificadores. Para el juego realista usa
+       ctf_game.launch.
+       ========================================================================== -->
+
   <arg name="local_planner" default="dwa"/>
   <arg name="localization" default="static"/>
   <arg name="run_demo" default="true"/>
+  <arg name="flag_x" default="-3.2"/>
+  <arg name="flag_y" default="3.2"/>
 
-  <include file="$(find ctf_navigation)/launch/simulation.launch"/>
+  <include file="$(find ctf_navigation)/launch/simulation.launch">
+    <arg name="flag_x" value="$(arg flag_x)"/>
+    <arg name="flag_y" value="$(arg flag_y)"/>
+  </include>
 
   <!-- Publishes each robot's footprint as a PointCloud2 obstacle for the other
        robot's local costmap, enabling inter-robot collision avoidance. -->
-  <node pkg="ctf_navigation" type="robot_obstacle_publisher.py"
+  <node pkg="ctf_navigation" type="robot_obstacle_publisher_node"
         name="robot_obstacle_publisher" output="screen"/>
 
   <include file="$(find ctf_navigation)/launch/navigation.launch">
@@ -22,8 +34,8 @@
     <param name="robot2_ns" value="robot2"/>
     <param name="robot1_base_frame" value="robot1/base_footprint"/>
     <param name="robot2_base_frame" value="robot2/base_footprint"/>
-    <param name="flag_x" value="-3.2"/>
-    <param name="flag_y" value="3.2"/>
+    <param name="flag_x" value="$(arg flag_x)"/>
+    <param name="flag_y" value="$(arg flag_y)"/>
     <param name="flag_yaw" value="1.57"/>
     <param name="robot1_base_x" value="-3.0"/>
     <param name="robot1_base_y" value="-3.0"/>

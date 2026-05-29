@@ -9,30 +9,7 @@
 #include <tf2/utils.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
-namespace
-{
-
-double normalizeAngle(double angle)
-{
-  while (angle > M_PI)
-  {
-    angle -= 2.0 * M_PI;
-  }
-  while (angle < -M_PI)
-  {
-    angle += 2.0 * M_PI;
-  }
-  return angle;
-}
-
-double distance2D(double x0, double y0, double x1, double y1)
-{
-  const double dx = x1 - x0;
-  const double dy = y1 - y0;
-  return std::sqrt(dx * dx + dy * dy);
-}
-
-}  // namespace
+#include "ctf_navigation/common/geometry.hpp"
 
 namespace ctf_navigation
 {
@@ -149,11 +126,11 @@ bool Planner5D::computeVelocityCommands(geometry_msgs::Twist& cmd_vel)
   const double goal_x = goal.pose.position.x;
   const double goal_y = goal.pose.position.y;
   const double goal_yaw = tf2::getYaw(goal.pose.orientation);
-  const double goal_dist = distance2D(current.x, current.y, goal_x, goal_y);
+  const double goal_dist = geometry::distance2D(current.x, current.y, goal_x, goal_y);
 
   if (goal_dist <= xy_goal_tolerance_)
   {
-    const double yaw_error = normalizeAngle(goal_yaw - current.theta);
+    const double yaw_error = geometry::normalizeAngle(goal_yaw - current.theta);
     if (std::fabs(yaw_error) <= yaw_goal_tolerance_)
     {
       goal_reached_ = true;
@@ -179,9 +156,9 @@ bool Planner5D::computeVelocityCommands(geometry_msgs::Twist& cmd_vel)
       continue;
     }
 
-    const double d = distance2D(current.x, current.y,
-                               transformed.pose.position.x,
-                               transformed.pose.position.y);
+    const double d = geometry::distance2D(current.x, current.y,
+                                        transformed.pose.position.x,
+                                        transformed.pose.position.y);
     const double lookahead_error = std::fabs(d - lookahead);
     if (lookahead_error < best_target_dist)
     {
@@ -243,10 +220,12 @@ bool Planner5D::computeVelocityCommands(geometry_msgs::Twist& cmd_vel)
         }
       }
 
-      const double target_dist    = distance2D(rollout.x, rollout.y, target_x, target_y);
-      const double final_goal_dist = distance2D(rollout.x, rollout.y, goal_x, goal_y);
+      const double target_dist = geometry::distance2D(rollout.x, rollout.y, target_x, target_y);
+      const double final_goal_dist =
+          geometry::distance2D(rollout.x, rollout.y, goal_x, goal_y);
       const double desired_heading = std::atan2(target_y - rollout.y, target_x - rollout.x);
-      const double heading_error   = std::fabs(normalizeAngle(desired_heading - rollout.theta));
+      const double heading_error =
+          std::fabs(geometry::normalizeAngle(desired_heading - rollout.theta));
       const double score = 4.0 * target_dist
                          + 1.2 * final_goal_dist
                          + 0.6 * heading_error
@@ -293,19 +272,10 @@ State5D Planner5D::simulate(const State5D& s, double v, double omega, double dt)
   State5D next = s;
   next.x += v * std::cos(s.theta) * dt;
   next.y += v * std::sin(s.theta) * dt;
-  next.theta = normalizeAngle(s.theta + omega * dt);
+  next.theta = geometry::normalizeAngle(s.theta + omega * dt);
   next.v = v;
   next.omega = omega;
   return next;
-}
-
-double Planner5D::heuristic(const State5D& s) const
-{
-  if (global_plan_.empty())
-  {
-    return 0.0;
-  }
-  return distance2D(s.x, s.y, goal_pose_.pose.position.x, goal_pose_.pose.position.y);
 }
 
 bool Planner5D::isCollision(const State5D& s) const
