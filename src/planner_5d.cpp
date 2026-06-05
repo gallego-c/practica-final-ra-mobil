@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 
+#include <base_local_planner/costmap_model.h>
 #include <costmap_2d/cost_values.h>
 #include <pluginlib/class_list_macros.h>
 #include <tf2/utils.h>
@@ -329,15 +330,11 @@ bool Planner5D::isCollision(const State5D& s) const
   }
 
   costmap_2d::Costmap2D* costmap = costmap_ros_->getCostmap();
-  unsigned int mx = 0;
-  unsigned int my = 0;
-  if (!costmap->worldToMap(s.x, s.y, mx, my))
-  {
-    return true;
-  }
+  base_local_planner::CostmapModel world_model(*costmap);
+  const double footprint_cost =
+      world_model.footprintCost(s.x, s.y, s.theta, costmap_ros_->getRobotFootprint());
 
-  const unsigned char cost = costmap->getCost(mx, my);
-  return cost >= costmap_2d::INSCRIBED_INFLATED_OBSTACLE;
+  return footprint_cost < 0.0;
 }
 
 State5D Planner5D::getCurrentState() const

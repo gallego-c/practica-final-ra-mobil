@@ -12,7 +12,7 @@ plugins:
   - {name: obstacle_layer, type: "costmap_2d::ObstacleLayer"}
   - {name: inflation_layer, type: "costmap_2d::InflationLayer"}
 
-# Tighter inflation than default local map: more valid trajectories in 1 m gaps.
+# Same local safety envelope as the known-map visio flow.
 inflation_layer:
-  inflation_radius:    0.12
-  cost_scaling_factor: 6.0
+  inflation_radius:    0.15
+  cost_scaling_factor: 5.0

@@ -15,8 +15,8 @@ static_layer:
   track_unknown_space: true
 
 inflation_layer:
-  inflation_radius: 0.18
-  cost_scaling_factor: 8.0
+  inflation_radius: 0.28
+  cost_scaling_factor: 12.0
 
 # No fixed width/height/origin here: the global costmap must adopt the merged
 # map bounds exactly, otherwise obstacles appear shifted from the SLAM map.

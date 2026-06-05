@@ -68,6 +68,7 @@ class SlamFrontierExplorer:
         self.min_coverage = float(rospy.get_param('~min_coverage', 0.72))
         self.gain_scale = float(rospy.get_param('~gain_scale', 2.0))
         self.voronoi_margin = float(rospy.get_param('~voronoi_margin', 0.25))
+        self.min_goal_clearance = float(rospy.get_param('~min_goal_clearance', 0.30))
         self.startup_delay = float(rospy.get_param('~startup_delay', 30.0))
         self.move_base_timeout = float(rospy.get_param('~move_base_timeout', 120.0))
         self.idle_frontier_cycles = int(rospy.get_param('~idle_frontier_cycles', 8))
@@ -215,6 +216,49 @@ class SlamFrontierExplorer:
                 centroids.append((wx, wy, len(cells)))
         return centroids
 
+    def _cell_has_clearance(self, grid, mx, my):
+        """Match visio's idea: a navigation goal must be inside known free space."""
+        info = grid.info
+        w, h = info.width, info.height
+        data = grid.data
+        clear_cells = max(1, int(round(self.min_goal_clearance / info.resolution)))
+
+        if mx < clear_cells or my < clear_cells or mx >= w - clear_cells or my >= h - clear_cells:
+            return False
+
+        for dy in range(-clear_cells, clear_cells + 1):
+            for dx in range(-clear_cells, clear_cells + 1):
+                value = data[cell_index(mx + dx, my + dy, w)]
+                if value < 0 or not is_free(value):
+                    return False
+        return True
+
+    def _safe_goal_near_frontier(self, grid, wx, wy):
+        """Move the goal off the frontier edge and into a nearby clear known cell."""
+        info = grid.info
+        mx, my = world_to_map(wx, wy, info)
+        search_cells = max(2, int(round(0.8 / info.resolution)))
+
+        best = None
+        best_dist = float('inf')
+        for radius in range(0, search_cells + 1):
+            for dy in range(-radius, radius + 1):
+                for dx in range(-radius, radius + 1):
+                    if abs(dx) != radius and abs(dy) != radius:
+                        continue
+                    cx = mx + dx
+                    cy = my + dy
+                    if not self._cell_has_clearance(grid, cx, cy):
+                        continue
+                    gx, gy = map_to_world(cx, cy, info)
+                    d = math.hypot(gx - wx, gy - wy)
+                    if d < best_dist:
+                        best_dist = d
+                        best = (gx, gy)
+            if best is not None:
+                return best
+        return None
+
     def _pick_frontier(self, ns, robot_xy, frontiers, all_poses, strict_voronoi=True):
         """Prefer large frontiers close to this robot and in its Voronoi cell."""
         best = None
@@ -302,6 +346,14 @@ class SlamFrontierExplorer:
                 continue
 
             wx, wy, size = pick
+            safe_goal = self._safe_goal_near_frontier(grid, wx, wy)
+            if safe_goal is None:
+                rospy.logwarn('%s: frontier has no safe nearby goal, blacklisting (%.1f, %.1f)',
+                              ns, wx, wy)
+                self._blacklist_goal(wx, wy)
+                rospy.sleep(0.3)
+                continue
+            wx, wy = safe_goal
             yaw = math.atan2(wy - pose[1], wx - pose[0])
             rospy.loginfo('%s -> frontier (%.2f, %.2f) size=%d', ns, wx, wy, size)
             client.send_goal(self._make_goal(wx, wy, yaw))
@@ -354,7 +406,7 @@ class SlamFrontierExplorer:
 
             if self._idle_cycles >= self.idle_frontier_cycles:
                 rospy.loginfo('No frontiers for %d cycles — exploration done',
-                              self._idle_frontier_cycles)
+                              self.idle_frontier_cycles)
                 break
 
             rate.sleep()

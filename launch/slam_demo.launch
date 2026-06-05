@@ -61,6 +61,7 @@
     <param name="goal_timeout" value="50.0"/>
     <param name="min_coverage" value="0.72"/>
     <param name="gain_scale" value="2.5"/>
+    <param name="min_goal_clearance" value="0.30"/>
     <param name="startup_delay" value="30.0"/>
     <param name="move_base_timeout" value="120.0"/>
     <param name="idle_frontier_cycles" value="8"/>
