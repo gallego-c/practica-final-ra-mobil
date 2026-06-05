@@ -16,7 +16,7 @@ import actionlib
 import rospy
 import tf2_ros
 from actionlib_msgs.msg import GoalStatus
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Twist
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from nav_msgs.msg import OccupancyGrid
 from std_msgs.msg import Bool
@@ -68,7 +68,9 @@ class SlamFrontierExplorer:
         self.min_coverage = float(rospy.get_param('~min_coverage', 0.72))
         self.gain_scale = float(rospy.get_param('~gain_scale', 2.0))
         self.voronoi_margin = float(rospy.get_param('~voronoi_margin', 0.25))
-        self.min_goal_clearance = float(rospy.get_param('~min_goal_clearance', 0.30))
+        self.min_goal_clearance = float(rospy.get_param('~min_goal_clearance', 0.15))
+        self.progress_timeout = float(rospy.get_param('~progress_timeout', 15.0))
+        self.min_progress_distance = float(rospy.get_param('~min_progress_distance', 0.15))
         self.startup_delay = float(rospy.get_param('~startup_delay', 30.0))
         self.move_base_timeout = float(rospy.get_param('~move_base_timeout', 120.0))
         self.idle_frontier_cycles = int(rospy.get_param('~idle_frontier_cycles', 8))
@@ -95,10 +97,13 @@ class SlamFrontierExplorer:
         tf2_ros.TransformListener(self._tf_buffer)
 
         self._clients = {}
+        self._cmd_pubs = {}
         for cfg in self.robots:
             ns = cfg['ns']
             self._clients[ns] = actionlib.SimpleActionClient(
                 '/' + ns + '/move_base', MoveBaseAction)
+            self._cmd_pubs[ns] = rospy.Publisher(
+                '/' + ns + '/cmd_vel', Twist, queue_size=1)
 
         rospy.loginfo('Waiting %.0f s for navigation stack...', self.startup_delay)
         rospy.sleep(self.startup_delay)
@@ -217,7 +222,8 @@ class SlamFrontierExplorer:
         return centroids
 
     def _cell_has_clearance(self, grid, mx, my):
-        """Match visio's idea: a navigation goal must be inside known free space."""
+        """Goal must be free and not adjacent to occupied cells. Unknown is OK
+        (frontiers are always next to unknown space)."""
         info = grid.info
         w, h = info.width, info.height
         data = grid.data
@@ -226,10 +232,14 @@ class SlamFrontierExplorer:
         if mx < clear_cells or my < clear_cells or mx >= w - clear_cells or my >= h - clear_cells:
             return False
 
+        center_val = data[cell_index(mx, my, w)]
+        if not is_free(center_val):
+            return False
+
         for dy in range(-clear_cells, clear_cells + 1):
             for dx in range(-clear_cells, clear_cells + 1):
                 value = data[cell_index(mx + dx, my + dy, w)]
-                if value < 0 or not is_free(value):
+                if value >= FREE_THRESH:
                     return False
         return True
 
@@ -304,22 +314,52 @@ class SlamFrontierExplorer:
         goal.target_pose.pose.orientation.w = qw
         return goal
 
-    def _wait_for_goal(self, client, timeout):
+    def _wait_for_goal(self, client, base_frame, goal_xy, timeout):
         deadline = rospy.Time.now() + rospy.Duration(timeout)
+        last_progress = rospy.Time.now()
+        pose = self._get_robot_pose(base_frame)
+        best_dist = (math.hypot(goal_xy[0] - pose[0], goal_xy[1] - pose[1])
+                     if pose is not None else float('inf'))
         rate = rospy.Rate(5.0)
         while rospy.Time.now() < deadline and not rospy.is_shutdown() and not self._stop.is_set():
             state = client.get_state()
             if state in (GoalStatus.SUCCEEDED, GoalStatus.ABORTED,
                          GoalStatus.REJECTED, GoalStatus.PREEMPTED):
                 return state == GoalStatus.SUCCEEDED
+
+            pose = self._get_robot_pose(base_frame)
+            if pose is not None:
+                dist = math.hypot(goal_xy[0] - pose[0], goal_xy[1] - pose[1])
+                if dist + self.min_progress_distance < best_dist:
+                    best_dist = dist
+                    last_progress = rospy.Time.now()
+
+            if (rospy.Time.now() - last_progress).toSec() > self.progress_timeout:
+                rospy.logwarn('Goal stalled: no progress for %.1f s', self.progress_timeout)
+                client.cancel_goal()
+                return False
+
             rate.sleep()
         client.cancel_goal()
         return False
+
+    def _spin_to_scan(self, ns, duration=3.0):
+        """Rotate in place to let SLAM capture more of the surroundings."""
+        pub = self._cmd_pubs[ns]
+        twist = Twist()
+        twist.angular.z = 0.8
+        end = rospy.Time.now() + rospy.Duration(duration)
+        rate = rospy.Rate(10)
+        while rospy.Time.now() < end and not rospy.is_shutdown() and not self._stop.is_set():
+            pub.publish(twist)
+            rate.sleep()
+        pub.publish(Twist())
 
     def _robot_loop(self, cfg):
         ns = cfg['ns']
         client = self._clients[ns]
         rospy.loginfo('%s exploration loop started', ns)
+        consecutive_fails = 0
 
         while not self._stop.is_set() and not rospy.is_shutdown():
             grid = self._get_map()
@@ -335,35 +375,43 @@ class SlamFrontierExplorer:
             frontiers = self._find_frontiers(grid)
             if not frontiers:
                 rospy.loginfo_throttle(15.0, '%s: no frontiers visible', ns)
-                rospy.sleep(2.0)
+                self._spin_to_scan(ns, 4.0)
                 continue
 
             all_poses = self._all_robot_poses()
             pick = self._pick_frontier(ns, pose, frontiers, all_poses)
             if pick is None:
-                rospy.logwarn_throttle(10.0, '%s: no assignable frontier', ns)
-                rospy.sleep(2.0)
+                rospy.logwarn_throttle(10.0, '%s: no assignable frontier, spinning', ns)
+                self._spin_to_scan(ns, 3.0)
                 continue
 
             wx, wy, size = pick
             safe_goal = self._safe_goal_near_frontier(grid, wx, wy)
             if safe_goal is None:
-                rospy.logwarn('%s: frontier has no safe nearby goal, blacklisting (%.1f, %.1f)',
-                              ns, wx, wy)
-                self._blacklist_goal(wx, wy)
-                rospy.sleep(0.3)
+                self._blacklist_goal(wx, wy, duration=30.0)
+                rospy.sleep(0.2)
                 continue
+
             wx, wy = safe_goal
             yaw = math.atan2(wy - pose[1], wx - pose[0])
             rospy.loginfo('%s -> frontier (%.2f, %.2f) size=%d', ns, wx, wy, size)
             client.send_goal(self._make_goal(wx, wy, yaw))
-            ok = self._wait_for_goal(client, self.goal_timeout)
-            if not ok:
-                rospy.logwarn('%s: frontier failed, blacklisting (%.1f, %.1f)', ns, wx, wy)
-                self._blacklist_goal(wx, wy)
+            ok = self._wait_for_goal(client, cfg['base_frame'], (wx, wy), self.goal_timeout)
 
-            rospy.sleep(0.3)
+            if ok:
+                consecutive_fails = 0
+            else:
+                consecutive_fails += 1
+                self._blacklist_goal(wx, wy, duration=40.0)
+                if consecutive_fails >= 3:
+                    rospy.logwarn('%s: %d consecutive fails, spinning to recover',
+                                 ns, consecutive_fails)
+                    self._spin_to_scan(ns, 5.0)
+                    consecutive_fails = 0
 
+            rospy.sleep(0.2)
+
+        client.cancel_all_goals()
         rospy.loginfo('%s exploration loop stopped', ns)
 
     def run(self):

@@ -58,9 +58,6 @@ private:
 
   bool initialized_;
   bool goal_reached_;
-  int escape_mode_;
-  int rotation_sign_;
-  ros::Time last_escape_switch_;
 
   std::vector<geometry_msgs::PoseStamped> global_plan_;
   geometry_msgs::PoseStamped goal_pose_;

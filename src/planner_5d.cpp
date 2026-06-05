@@ -32,9 +32,6 @@ Planner5D::Planner5D()
   , proximity_weight_(0.3)
   , initialized_(false)
   , goal_reached_(false)
-  , escape_mode_(0)
-  , rotation_sign_(1)
-  , last_escape_switch_(0)
   , costmap_ros_(nullptr)
   , tf_(nullptr)
 {
@@ -99,7 +96,6 @@ bool Planner5D::setPlan(const std::vector<geometry_msgs::PoseStamped>& plan)
 
   global_plan_ = plan;
   goal_reached_ = false;
-  escape_mode_ = 0;
 
   if (global_plan_.empty())
   {
@@ -275,32 +271,12 @@ bool Planner5D::computeVelocityCommands(geometry_msgs::Twist& cmd_vel)
 
   if (!found)
   {
-    const ros::Time now = ros::Time::now();
-    if ((now - last_escape_switch_).toSec() > 1.5)
-    {
-      escape_mode_ = (escape_mode_ + 1) % 3;
-      last_escape_switch_ = now;
-      if (escape_mode_ == 2)
-      {
-        rotation_sign_ = -rotation_sign_;
-      }
-    }
-
-    if (escape_mode_ == 0 && min_vel_x_ < 0.0)
-    {
-      ROS_WARN_THROTTLE(1.0, "Planner5D: backing up to escape narrow area");
-      cmd_vel.linear.x = std::max(min_vel_x_, -0.10);
-      cmd_vel.angular.z = 0.0;
-      return true;
-    }
-
-    ROS_WARN_THROTTLE(1.0, "Planner5D: rotating in place (dir=%d)", rotation_sign_);
-    cmd_vel.linear.x = 0.0;
-    cmd_vel.angular.z = rotation_sign_ * 0.45 * max_vel_theta_;
-    return true;
+    // Let move_base handle recovery/abort. Returning a fake rotate command here
+    // makes frontier exploration look alive while the robot is actually stuck.
+    ROS_WARN_THROTTLE(1.0, "Planner5D found no collision-free rollout");
+    return false;
   }
 
-  escape_mode_ = 0;
   cmd_vel.linear.x = best_v;
   cmd_vel.angular.z = best_omega;
   return true;

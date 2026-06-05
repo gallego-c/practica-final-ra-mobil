@@ -1,5 +1,5 @@
 <launch>
-  <arg name="local_planner" default="5d"/>
+  <arg name="local_planner" default="dwa"/>
   <arg name="run_demo" default="true"/>
   <arg name="run_ctf" default="true"/>
   <arg name="world_frame" default="map"/>
@@ -58,13 +58,15 @@
     <param name="map_frame" value="$(arg world_frame)"/>
     <param name="map_topic" value="$(arg merged_map_topic)"/>
     <param name="exploration_timeout" value="300.0"/>
-    <param name="goal_timeout" value="50.0"/>
+    <param name="goal_timeout" value="45.0"/>
     <param name="min_coverage" value="0.72"/>
     <param name="gain_scale" value="2.5"/>
-    <param name="min_goal_clearance" value="0.30"/>
+    <param name="min_goal_clearance" value="0.15"/>
+    <param name="progress_timeout" value="15.0"/>
+    <param name="min_progress_distance" value="0.15"/>
     <param name="startup_delay" value="30.0"/>
     <param name="move_base_timeout" value="120.0"/>
-    <param name="idle_frontier_cycles" value="8"/>
+    <param name="idle_frontier_cycles" value="12"/>
   </node>
 
   <node if="$(eval arg('run_demo') and arg('run_ctf'))"

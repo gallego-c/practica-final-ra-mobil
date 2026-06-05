@@ -1,17 +1,17 @@
-# Global planner for SLAM demo: only plan through known free cells.
-# With allow_unknown: true the planner routes through unmapped space; the robot
-# hits real walls, move_base recovery fails (rotate sees lethal cost -1), and
-# both robots appear stuck.
-allow_unknown:  false
-default_tolerance: 0.3
+# Global planner for SLAM demo.
+# allow_unknown MUST be true: frontiers are at the edge of the unknown and the
+# robot needs to traverse unknown cells to reach them. The frontier explorer
+# ensures goals land in known free space; progress_timeout catches real dead-ends.
+allow_unknown:  true
+default_tolerance: 0.5
 
 use_dijkstra:   true
 use_quadratic:  true
 use_grid_path:  false
 
 lethal_cost:    253
-neutral_cost:    50
-cost_factor:     3.5
+neutral_cost:    66
+cost_factor:     0.55
 
 publish_potential: true
 orientation_mode: 0
