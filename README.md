@@ -19,10 +19,18 @@ sudo apt install \
   ros-noetic-navigation
 ```
 
-2) Build:
+2) Build and source (required every new terminal):
 ```bash
 cd ~/catkin_ws && catkin_make
+source /opt/ros/noetic/setup.bash
 source ~/catkin_ws/devel/setup.bash
+```
+
+Verify ROS sees the package:
+```bash
+rospack find ctf_navigation
+# must print: .../src/practica-final-ra-mobil
+ls $(rospack find ctf_navigation)/launch/slam_demo.launch
 ```
 
 3) Run the full CTF demo (Gazebo + navigation + autonomous demo node):
