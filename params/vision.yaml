@@ -1,0 +1,40 @@
+# Parámetros del nodo flag_detector (visión)
+# ------------------------------------------------------------------------------
+# Topic de cámara (relativo al namespace del robot, p. ej. /robot1/...).
+# TurtleBot3 Waffle Pi Gazebo suele publicar camera/rgb/image_raw.
+# NO usar el namespace privado del nodo flag_detector.
+camera_topic: "camera/rgb/image_raw"
+compressed_camera_topic: "camera/rgb/image_raw/compressed"
+scan_topic:   "scan"
+
+# Frames TF (base_frame se sobreescribe por robot en el launch).
+base_frame: "base_footprint"
+map_frame:  "map"
+
+# FOV horizontal cámara Waffle Pi en Gazebo (rad, ~80°).
+horizontal_fov: 1.3962634
+
+# Área mínima del blob rojo (en px) para dar la bandera por "vista".
+min_blob_area: 80
+
+# Distancia máxima (m) a la que se confía en la estimación por LIDAR.
+max_detection_distance: 5.0
+
+# Ventana angular (rad) alrededor del bearing donde se busca el eco láser.
+range_window: 0.25
+
+# Umbrales HSV (Gazebo suele desaturar el rojo; valores permisivos).
+h_low1: 0
+h_high1: 15
+h_low2: 165
+h_high2: 180
+s_min: 60
+v_min: 40
+
+# Fallback RGB: util cuando Gazebo o la camara cambian la saturacion/hue del rojo.
+use_rgb_fallback: true
+rgb_red_min: 70
+rgb_red_dominance: 1.18
+
+# Publicar imagen de depuración (~debug_image) con la detección dibujada.
+publish_debug: true
