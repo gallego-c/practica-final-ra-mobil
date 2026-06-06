@@ -98,6 +98,7 @@ class SlamFrontierExplorerCtf:
         self.flag_found = {'robot1': False, 'robot2': False}
         self.flag_estimate = {'robot1': None, 'robot2': None}
         self.flag_estimate_time = {'robot1': 0.0, 'robot2': 0.0}
+        self.last_known_flag_xy = None
         self.flag_lock = threading.Lock()
 
         # Goal throttling
@@ -173,6 +174,7 @@ class SlamFrontierExplorerCtf:
         with self.flag_lock:
             self.flag_estimate[ns] = (msg.pose.position.x, msg.pose.position.y)
             self.flag_estimate_time[ns] = rospy.Time.now().to_sec()
+            self.last_known_flag_xy = (msg.pose.position.x, msg.pose.position.y)
 
     def _get_fresh_flag_estimate(self, ns):
         with self.flag_lock:
@@ -337,6 +339,12 @@ class SlamFrontierExplorerCtf:
         best = None
         best_score = float('inf')
 
+        # Read last known flag position safely
+        last_flag = None
+        with self.flag_lock:
+            if self.last_known_flag_xy is not None:
+                last_flag = self.last_known_flag_xy
+
         for wx, wy, size in frontiers:
             if self._is_blacklisted(wx, wy):
                 continue
@@ -356,6 +364,11 @@ class SlamFrontierExplorerCtf:
 
             gain = self.gain_scale * math.sqrt(float(size))
             score = my_dist - gain
+
+            if last_flag is not None:
+                dist_to_flag = math.hypot(wx - last_flag[0], wy - last_flag[1])
+                score += 2.0 * dist_to_flag  # Bias towards last known flag position
+
             if score < best_score:
                 best_score = score
                 best = (wx, wy, size)
