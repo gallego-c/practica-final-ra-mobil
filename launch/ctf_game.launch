@@ -1,0 +1,88 @@
+<launch>
+  <!-- ==========================================================================
+       JUEGO CTF REALISTA
+       Los robots NO conocen la bandera: la descubren explorando + cámara.
+
+       Uso:
+         roslaunch ctf_navigation ctf_game.launch
+         roslaunch ctf_navigation ctf_game.launch flag_x:=2.0 flag_y:=-3.0
+         roslaunch ctf_navigation ctf_game.launch local_planner:=5d
+       ========================================================================== -->
+
+  <arg name="local_planner" default="dwa"/>
+  <arg name="localization"  default="static"/>
+  <arg name="flag_x"        default="-3.2"/>
+  <arg name="flag_y"        default="3.2"/>
+  <arg name="rviz"          default="false"/>
+
+  <!-- ── Simulación Gazebo + bandera ────────────────────────────────────────-->
+  <include file="$(find ctf_navigation)/launch/simulation.launch">
+    <arg name="flag_x" value="$(arg flag_x)"/>
+    <arg name="flag_y" value="$(arg flag_y)"/>
+  </include>
+
+  <!-- ── Evitación entre robots (footprint del otro robot como obstáculo) ────-->
+  <node pkg="ctf_navigation" type="robot_obstacle_publisher_node"
+        name="robot_obstacle_publisher" output="screen"/>
+
+  <!-- ── Navegación (map_server + move_base por robot) ──────────────────────-->
+  <include file="$(find ctf_navigation)/launch/navigation.launch">
+    <arg name="local_planner" value="$(arg local_planner)"/>
+    <arg name="localization"  value="$(arg localization)"/>
+  </include>
+
+  <!-- ── Visión: detector de bandera por robot ──────────────────────────────-->
+  <group ns="robot1">
+    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
+          output="screen">
+      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
+      <param name="camera_topic" value="camera/rgb/image_raw"/>
+      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
+      <param name="base_frame" value="robot1/base_footprint"/>
+    </node>
+  </group>
+
+  <group ns="robot2">
+    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
+          output="screen">
+      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
+      <param name="camera_topic" value="camera/rgb/image_raw"/>
+      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
+      <param name="base_frame" value="robot2/base_footprint"/>
+    </node>
+  </group>
+
+  <!-- ── Coordinador del juego (exploración + lógica CTF) ────────────────────-->
+  <node pkg="ctf_navigation" type="ctf_coordinator_node" name="ctf_coordinator"
+        output="screen">
+    <param name="map_frame" value="map"/>
+    <param name="detector_node" value="flag_detector"/>
+
+    <param name="robot1_ns" value="robot1"/>
+    <param name="robot2_ns" value="robot2"/>
+    <param name="robot1_base_frame" value="robot1/base_footprint"/>
+    <param name="robot2_base_frame" value="robot2/base_footprint"/>
+
+    <param name="robot1_base_x" value="-3.0"/>
+    <param name="robot1_base_y" value="-3.0"/>
+    <param name="robot1_base_yaw" value="0.0"/>
+    <param name="robot2_base_x" value="3.0"/>
+    <param name="robot2_base_y" value="3.0"/>
+    <param name="robot2_base_yaw" value="3.1416"/>
+
+    <param name="flag_capture_distance" value="0.40"/>
+    <param name="flag_standoff_distance" value="0.20"/>
+    <param name="capture_pause_sec" value="3.0"/>
+    <param name="catch_distance" value="0.65"/>
+    <param name="flag_memory_timeout" value="5.0"/>
+    <param name="waypoint_reached_dist" value="0.55"/>
+    <param name="chase_goal_period" value="1.0"/>
+
+    <param name="explore_step" value="1.0"/>
+    <param name="explore_clearance" value="0.30"/>
+    <param name="rate_hz" value="5.0"/>
+  </node>
+
+  <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz"
+        args="-d $(find ctf_navigation)/rviz/ctf_game.rviz"/>
+</launch>

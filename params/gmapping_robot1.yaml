@@ -1,0 +1,31 @@
+# GMapping tuned for TurtleBot3 Waffle Pi (Robot 1) in Gazebo
+# High-precision scan-matching and fast update parameters to prevent map drift and alignment offsets.
+transform_publish_period: 0.05
+map_update_interval: 0.5
+maxUrange: 3.5
+maxRange: 3.5
+sigma: 0.05
+kernelSize: 1
+lstep: 0.05
+astep: 0.05
+iterations: 15
+lsigma: 0.075
+ogain: 3.0
+minimumScore: 80
+llsamplerange: 0.01
+llsamplestep: 0.01
+lasamplerange: 0.005
+lasamplestep: 0.005
+linearUpdate: 0.1
+angularUpdate: 0.1
+temporalUpdate: 0.2
+particles: 100
+xmin: -6.0
+ymin: -6.0
+xmax: 6.0
+ymax: 6.0
+delta: 0.05
+srr: 0.01
+srt: 0.02
+str: 0.01
+stt: 0.02

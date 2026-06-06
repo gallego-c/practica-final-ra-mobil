@@ -4,35 +4,13 @@
 #include <cmath>
 #include <limits>
 
+#include <base_local_planner/costmap_model.h>
 #include <costmap_2d/cost_values.h>
 #include <pluginlib/class_list_macros.h>
 #include <tf2/utils.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
-namespace
-{
-
-double normalizeAngle(double angle)
-{
-  while (angle > M_PI)
-  {
-    angle -= 2.0 * M_PI;
-  }
-  while (angle < -M_PI)
-  {
-    angle += 2.0 * M_PI;
-  }
-  return angle;
-}
-
-double distance2D(double x0, double y0, double x1, double y1)
-{
-  const double dx = x1 - x0;
-  const double dy = y1 - y0;
-  return std::sqrt(dx * dx + dy * dy);
-}
-
-}  // namespace
+#include "ctf_navigation/common/geometry.hpp"
 
 namespace ctf_navigation
 {
@@ -50,10 +28,10 @@ Planner5D::Planner5D()
   , v_samples_(12)
   , omega_samples_(24)
   , max_iterations_(500)
+  , path_follow_weight_(2.0)
+  , proximity_weight_(0.3)
   , initialized_(false)
   , goal_reached_(false)
-  , rotation_sign_(1)
-  , last_rotation_switch_(0)
   , costmap_ros_(nullptr)
   , tf_(nullptr)
 {
@@ -83,6 +61,8 @@ void Planner5D::initialize(std::string name,
   private_nh.param("v_samples", v_samples_, v_samples_);
   private_nh.param("omega_samples", omega_samples_, omega_samples_);
   private_nh.param("max_iterations", max_iterations_, max_iterations_);
+  private_nh.param("path_follow_weight", path_follow_weight_, path_follow_weight_);
+  private_nh.param("proximity_weight", proximity_weight_, proximity_weight_);
   fallback_nh.param("max_vel_x", max_vel_x_, max_vel_x_);
   fallback_nh.param("min_vel_x", min_vel_x_, min_vel_x_);
   fallback_nh.param("max_vel_theta", max_vel_theta_, max_vel_theta_);
@@ -95,6 +75,8 @@ void Planner5D::initialize(std::string name,
   fallback_nh.param("v_samples", v_samples_, v_samples_);
   fallback_nh.param("omega_samples", omega_samples_, omega_samples_);
   fallback_nh.param("max_iterations", max_iterations_, max_iterations_);
+  fallback_nh.param("path_follow_weight", path_follow_weight_, path_follow_weight_);
+  fallback_nh.param("proximity_weight", proximity_weight_, proximity_weight_);
 
   tf_ = tf;
   costmap_ros_ = costmap_ros;
@@ -149,11 +131,11 @@ bool Planner5D::computeVelocityCommands(geometry_msgs::Twist& cmd_vel)
   const double goal_x = goal.pose.position.x;
   const double goal_y = goal.pose.position.y;
   const double goal_yaw = tf2::getYaw(goal.pose.orientation);
-  const double goal_dist = distance2D(current.x, current.y, goal_x, goal_y);
+  const double goal_dist = geometry::distance2D(current.x, current.y, goal_x, goal_y);
 
   if (goal_dist <= xy_goal_tolerance_)
   {
-    const double yaw_error = normalizeAngle(goal_yaw - current.theta);
+    const double yaw_error = geometry::normalizeAngle(goal_yaw - current.theta);
     if (std::fabs(yaw_error) <= yaw_goal_tolerance_)
     {
       goal_reached_ = true;
@@ -179,9 +161,9 @@ bool Planner5D::computeVelocityCommands(geometry_msgs::Twist& cmd_vel)
       continue;
     }
 
-    const double d = distance2D(current.x, current.y,
-                               transformed.pose.position.x,
-                               transformed.pose.position.y);
+    const double d = geometry::distance2D(current.x, current.y,
+                                        transformed.pose.position.x,
+                                        transformed.pose.position.y);
     const double lookahead_error = std::fabs(d - lookahead);
     if (lookahead_error < best_target_dist)
     {
@@ -227,36 +209,60 @@ bool Planner5D::computeVelocityCommands(geometry_msgs::Twist& cmd_vel)
         continue;
       }
 
-      // Proximity penalty: discourages rolling out near obstacles even if not
-      // strictly colliding.  costmap values range 0–252 in the inflation band.
       costmap_2d::Costmap2D* cm = costmap_ros_->getCostmap();
-      unsigned int pmx = 0, pmy = 0;
+      unsigned int pmx = 0;
+      unsigned int pmy = 0;
       double proximity_penalty = 0.0;
       if (cm->worldToMap(rollout.x, rollout.y, pmx, pmy))
       {
         const unsigned char c = cm->getCost(pmx, pmy);
         if (c > 0 && c < costmap_2d::INSCRIBED_INFLATED_OBSTACLE)
         {
-          // Keep the penalty gentle so the planner can still route near wall
-          // ends when needed; the INSCRIBED collision check above handles safety.
-          proximity_penalty = 0.3 * (static_cast<double>(c) / 252.0);
+          proximity_penalty = proximity_weight_ * (static_cast<double>(c) / 252.0);
         }
       }
 
-      const double target_dist    = distance2D(rollout.x, rollout.y, target_x, target_y);
-      const double final_goal_dist = distance2D(rollout.x, rollout.y, goal_x, goal_y);
+      double path_dist = std::numeric_limits<double>::infinity();
+      for (const auto& pose : global_plan_)
+      {
+        geometry_msgs::PoseStamped transformed = pose;
+        try
+        {
+          transformed = tf_->transform(pose, costmap_ros_->getGlobalFrameID(),
+                                       ros::Duration(0.01));
+        }
+        catch (const tf2::TransformException&)
+        {
+          continue;
+        }
+        path_dist = std::min(path_dist,
+                             geometry::distance2D(rollout.x, rollout.y,
+                                                    transformed.pose.position.x,
+                                                    transformed.pose.position.y));
+      }
+      if (!std::isfinite(path_dist))
+      {
+        path_dist = geometry::distance2D(rollout.x, rollout.y, target_x, target_y);
+      }
+
+      const double target_dist =
+          geometry::distance2D(rollout.x, rollout.y, target_x, target_y);
+      const double final_goal_dist =
+          geometry::distance2D(rollout.x, rollout.y, goal_x, goal_y);
       const double desired_heading = std::atan2(target_y - rollout.y, target_x - rollout.x);
-      const double heading_error   = std::fabs(normalizeAngle(desired_heading - rollout.theta));
+      const double heading_error =
+          std::fabs(geometry::normalizeAngle(desired_heading - rollout.theta));
       const double score = 4.0 * target_dist
                          + 1.2 * final_goal_dist
+                         + path_follow_weight_ * path_dist
                          + 0.6 * heading_error
-                         - 0.2 * v
+                         - 0.2 * std::fabs(v)
                          + proximity_penalty;
 
       if (score < best_score)
       {
         best_score = score;
-        best_v     = v;
+        best_v = v;
         best_omega = omega;
         found = true;
       }
@@ -265,17 +271,10 @@ bool Planner5D::computeVelocityCommands(geometry_msgs::Twist& cmd_vel)
 
   if (!found)
   {
-    // Alternate rotation direction every 1.2 s to escape symmetric dead-ends.
-    const ros::Time now = ros::Time::now();
-    if ((now - last_rotation_switch_).toSec() > 1.2)
-    {
-      rotation_sign_         = -rotation_sign_;
-      last_rotation_switch_  = now;
-    }
-    ROS_WARN_THROTTLE(1.0, "Planner5D found no collision-free rollout; rotating in place (dir=%d)",
-                      rotation_sign_);
-    cmd_vel.angular.z = rotation_sign_ * 0.5 * max_vel_theta_;
-    return true;
+    // Let move_base handle recovery/abort. Returning a fake rotate command here
+    // makes frontier exploration look alive while the robot is actually stuck.
+    ROS_WARN_THROTTLE(1.0, "Planner5D found no collision-free rollout");
+    return false;
   }
 
   cmd_vel.linear.x = best_v;
@@ -293,19 +292,10 @@ State5D Planner5D::simulate(const State5D& s, double v, double omega, double dt)
   State5D next = s;
   next.x += v * std::cos(s.theta) * dt;
   next.y += v * std::sin(s.theta) * dt;
-  next.theta = normalizeAngle(s.theta + omega * dt);
+  next.theta = geometry::normalizeAngle(s.theta + omega * dt);
   next.v = v;
   next.omega = omega;
   return next;
-}
-
-double Planner5D::heuristic(const State5D& s) const
-{
-  if (global_plan_.empty())
-  {
-    return 0.0;
-  }
-  return distance2D(s.x, s.y, goal_pose_.pose.position.x, goal_pose_.pose.position.y);
 }
 
 bool Planner5D::isCollision(const State5D& s) const
@@ -316,15 +306,11 @@ bool Planner5D::isCollision(const State5D& s) const
   }
 
   costmap_2d::Costmap2D* costmap = costmap_ros_->getCostmap();
-  unsigned int mx = 0;
-  unsigned int my = 0;
-  if (!costmap->worldToMap(s.x, s.y, mx, my))
-  {
-    return true;
-  }
+  base_local_planner::CostmapModel world_model(*costmap);
+  const double footprint_cost =
+      world_model.footprintCost(s.x, s.y, s.theta, costmap_ros_->getRobotFootprint());
 
-  const unsigned char cost = costmap->getCost(mx, my);
-  return cost >= costmap_2d::INSCRIBED_INFLATED_OBSTACLE;
+  return footprint_cost < 0.0;
 }
 
 State5D Planner5D::getCurrentState() const

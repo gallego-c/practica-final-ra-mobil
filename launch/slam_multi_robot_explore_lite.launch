@@ -1,0 +1,76 @@
+<launch>
+  <arg name="local_planner" default="dwa"/>
+  <arg name="world_frame" default="map"/>
+  <arg name="merged_map_topic" default="/merged_map"/>
+
+  <!-- Spawning initial poses in Gazebo world -->
+  <arg name="robot1_x" default="-3.0"/>
+  <arg name="robot1_y" default="-3.0"/>
+  <arg name="robot1_yaw" default="0.0"/>
+  <arg name="robot2_x" default="3.0"/>
+  <arg name="robot2_y" default="3.0"/>
+  <arg name="robot2_yaw" default="3.1416"/>
+
+  <!-- Initial alignment map offset for multirobot_map_merge -->
+  <arg name="robot1_map_init_x" default="0.0"/>
+  <arg name="robot1_map_init_y" default="0.0"/>
+  <arg name="robot1_map_init_yaw" default="0.0"/>
+  <arg name="robot2_map_init_x" default="0.0"/>
+  <arg name="robot2_map_init_y" default="0.0"/>
+  <arg name="robot2_map_init_yaw" default="0.0"/>
+
+  <!-- 1. Gazebo Simulation with the CTF world and spawns robot1 & robot2 -->
+  <include file="$(find ctf_navigation)/launch/simulation.launch">
+    <arg name="robot1_x" value="$(arg robot1_x)"/>
+    <arg name="robot1_y" value="$(arg robot1_y)"/>
+    <arg name="robot1_yaw" value="$(arg robot1_yaw)"/>
+    <arg name="robot2_x" value="$(arg robot2_x)"/>
+    <arg name="robot2_y" value="$(arg robot2_y)"/>
+    <arg name="robot2_yaw" value="$(arg robot2_yaw)"/>
+  </include>
+
+  <!-- 2. Shared SLAM (GMapping for both robots & map_merge) -->
+  <include file="$(find ctf_navigation)/launch/shared_slam.launch">
+    <arg name="world_frame" value="$(arg world_frame)"/>
+    <arg name="merged_map_topic" value="$(arg merged_map_topic)"/>
+    <arg name="robot1_init_x" value="$(arg robot1_map_init_x)"/>
+    <arg name="robot1_init_y" value="$(arg robot1_map_init_y)"/>
+    <arg name="robot1_init_yaw" value="$(arg robot1_map_init_yaw)"/>
+    <arg name="robot2_init_x" value="$(arg robot2_map_init_x)"/>
+    <arg name="robot2_init_y" value="$(arg robot2_map_init_y)"/>
+    <arg name="robot2_init_yaw" value="$(arg robot2_map_init_yaw)"/>
+  </include>
+
+  <!-- 3. Inter-robot priority coordination & collision avoidance (Twist multiplexing and PointCloud2 obstacles) -->
+  <node pkg="ctf_navigation" type="robot_coordinator.py"
+        name="robot_coordinator" output="screen">
+    <param name="target_frame" value="$(arg world_frame)"/>
+    <param name="robot_radius" value="0.28"/>
+    <param name="max_avoid_distance" value="3.5"/>
+  </node>
+
+  <!-- 4. Navigation (move_base) for both robots on the /merged_map -->
+  <include file="$(find ctf_navigation)/launch/slam_navigation.launch">
+    <arg name="local_planner" value="$(arg local_planner)"/>
+    <arg name="world_frame" value="$(arg world_frame)"/>
+    <arg name="merged_map_topic" value="$(arg merged_map_topic)"/>
+  </include>
+
+  <!-- 5. Autonomous exploration using explore_lite for both robots.
+       We delay the nodes by 20s to ensure Gazebo, GMapping, map_merge, and move_base are fully started. -->
+  <group ns="robot1">
+    <param name="tf_prefix" value="robot1"/>
+    <node pkg="explore_lite" type="explore" name="explore" output="screen"
+          launch-prefix="bash -c 'sleep 20; $0 $@' ">
+      <rosparam file="$(find ctf_navigation)/params/explore_lite_multi.yaml" command="load"/>
+    </node>
+  </group>
+
+  <group ns="robot2">
+    <param name="tf_prefix" value="robot2"/>
+    <node pkg="explore_lite" type="explore" name="explore" output="screen"
+          launch-prefix="bash -c 'sleep 20; $0 $@' ">
+      <rosparam file="$(find ctf_navigation)/params/explore_lite_multi.yaml" command="load"/>
+    </node>
+  </group>
+</launch>
