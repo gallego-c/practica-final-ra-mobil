@@ -18,7 +18,7 @@
           respawn="true" respawn_delay="3">
       <remap from="odom" to="/robot1/odom"/>
       <remap from="scan" to="/robot1/scan_filtered"/>
-      <remap from="cmd_vel" to="/robot1/cmd_vel"/>
+      <remap from="cmd_vel" to="/robot1/cmd_vel_raw"/>
       <remap from="map" to="/robot1/map"/>
       <rosparam file="$(find ctf_navigation)/params/move_base_slam.yaml" command="load"/>
       <rosparam file="$(find ctf_navigation)/params/costmap_common_slam.yaml"
@@ -60,7 +60,7 @@
           launch-prefix="bash -c 'sleep 6; $0 $@' ">
       <remap from="odom" to="/robot2/odom"/>
       <remap from="scan" to="/robot2/scan_filtered"/>
-      <remap from="cmd_vel" to="/robot2/cmd_vel"/>
+      <remap from="cmd_vel" to="/robot2/cmd_vel_raw"/>
       <remap from="map" to="/robot2/map"/>
       <rosparam file="$(find ctf_navigation)/params/move_base_slam.yaml" command="load"/>
       <rosparam file="$(find ctf_navigation)/params/costmap_common_slam.yaml"

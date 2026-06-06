@@ -41,9 +41,9 @@
     <arg name="robot2_init_yaw" value="$(arg robot2_map_init_yaw)"/>
   </include>
 
-  <!-- 3. Inter-robot collision avoidance (publishes other robot footprints as obstacle points) -->
-  <node pkg="ctf_navigation" type="robot_obstacle_publisher.py"
-        name="robot_obstacle_publisher" output="screen">
+  <!-- 3. Inter-robot priority coordination & collision avoidance (Twist multiplexing and PointCloud2 obstacles) -->
+  <node pkg="ctf_navigation" type="robot_coordinator.py"
+        name="robot_coordinator" output="screen">
     <param name="target_frame" value="$(arg world_frame)"/>
     <param name="robot_radius" value="0.28"/>
     <param name="max_avoid_distance" value="3.5"/>
