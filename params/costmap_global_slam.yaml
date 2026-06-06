@@ -12,10 +12,10 @@ plugins:
 static_layer:
   map_topic: /merged_map
   subscribe_to_updates: true
-  track_unknown_space: false
-  unknown_cost_value: 0
-  trinary_costmap: false
+  track_unknown_space: true
+  unknown_cost_value: 255
+  trinary_costmap: true
 
 inflation_layer:
-  inflation_radius: 0.25
+  inflation_radius: 0.35
   cost_scaling_factor: 10.0

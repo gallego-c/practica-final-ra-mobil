@@ -1,5 +1,5 @@
 # GMapping tuned for TurtleBot3 in Gazebo (reduce "Scan Matching Failed").
-transform_publish_period: 99999.0
+transform_publish_period: 0.05
 map_update_interval: 1.0
 maxUrange: 3.5
 maxRange: 3.5
