@@ -6,7 +6,8 @@ costmap_updates_topic: move_base/global_costmap/costmap_updates
 visualize: true
 
 # Planning frequency (in Hz) to search for new frontiers
-planner_frequency: 0.33 # Plan a new frontier every 3 seconds
+planner_frequency: 0.05 # Plan a new frontier every 20 seconds
+
 
 # Timeout (in seconds) to check if the robot has made progress towards its goal.
 # If the robot moves less than the costmap resolution in this time, it aborts the goal.
