@@ -97,16 +97,16 @@
     <param name="min_goal_clearance" value="0.15"/>
     <param name="progress_timeout" value="15.0"/>
     <param name="min_progress_distance" value="0.15"/>
-    <param name="startup_delay" value="30.0"/>
+    <param name="startup_delay" value="12.0"/>
     <param name="move_base_timeout" value="120.0"/>
     <param name="idle_frontier_cycles" value="12"/>
 
     <!-- CTF parameters -->
-    <param name="flag_capture_distance" value="0.45"/>
+    <param name="flag_capture_distance" value="0.60"/>
     <param name="flag_standoff_distance" value="0.20"/>
     <param name="catch_distance" value="0.65"/>
     <param name="chase_goal_period" value="1.0"/>
-    <param name="capture_pause_sec" value="3.0"/>
+    <param name="capture_pause_sec" value="1.5"/>
     <param name="flag_memory_timeout" value="5.0"/>
 
     <!-- Home coordinates -->

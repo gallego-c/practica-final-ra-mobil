@@ -176,11 +176,19 @@ class SlamFrontierExplorerCtf:
 
     def _get_fresh_flag_estimate(self, ns):
         with self.flag_lock:
-            if self.flag_estimate[ns] is None:
-                return False, None
-            age = rospy.Time.now().to_sec() - self.flag_estimate_time[ns]
-            if age <= self.flag_memory_timeout:
-                return True, self.flag_estimate[ns]
+            # Check own estimate first
+            if self.flag_estimate[ns] is not None:
+                age = rospy.Time.now().to_sec() - self.flag_estimate_time[ns]
+                if age <= self.flag_memory_timeout:
+                    return True, self.flag_estimate[ns]
+            
+            # Check other robot's estimate to share info competitively
+            other_ns = 'robot2' if ns == 'robot1' else 'robot1'
+            if self.flag_estimate[other_ns] is not None:
+                age_other = rospy.Time.now().to_sec() - self.flag_estimate_time[other_ns]
+                if age_other <= self.flag_memory_timeout:
+                    return True, self.flag_estimate[other_ns]
+            
             return False, None
 
     def _map_cb(self, msg):
@@ -395,6 +403,14 @@ class SlamFrontierExplorerCtf:
                     best_dist = dist
                     last_progress = rospy.Time.now()
 
+            # Reset progress timeout if robots are close to avoid canceling goals due to yielding/avoidance
+            other_ns = 'robot2' if ns == 'robot1' else 'robot1'
+            other_pose = self._get_robot_pose(other_ns + '/base_footprint')
+            if pose is not None and other_pose is not None:
+                d_robots = math.hypot(pose[0] - other_pose[0], pose[1] - other_pose[1])
+                if d_robots < 2.2:
+                    last_progress = rospy.Time.now()
+
             if (rospy.Time.now() - last_progress).to_sec() > self.progress_timeout:
                 rospy.logwarn('%s Goal stalled: no progress for %.1f s', ns, self.progress_timeout)
                 client.cancel_goal()
@@ -542,11 +558,24 @@ class SlamFrontierExplorerCtf:
             client.send_goal(self._make_goal(wx, wy, yaw))
             ok = self._wait_for_goal(ns, client, cfg['base_frame'], (wx, wy), self.goal_timeout)
 
+            # Check if they were close to each other to avoid counting it as a failure
+            were_close = False
+            pose = self._get_robot_pose(cfg['base_frame'])
+            other_ns = 'robot2' if ns == 'robot1' else 'robot1'
+            other_pose = self._get_robot_pose(other_ns + '/base_footprint')
+            if pose is not None and other_pose is not None:
+                if math.hypot(pose[0] - other_pose[0], pose[1] - other_pose[1]) < 2.2:
+                    were_close = True
+
             if ok:
                 consecutive_fails = 0
             else:
-                consecutive_fails += 1
-                self._blacklist_goal(wx, wy, duration=40.0)
+                if not were_close:
+                    consecutive_fails += 1
+                    self._blacklist_goal(wx, wy, duration=40.0)
+                else:
+                    rospy.loginfo(f'{ns}: Goal cancelled or failed due to proximity/yielding. Not counting as failure.')
+                
                 if consecutive_fails >= 3:
                     rospy.logwarn('%s: %d consecutive fails, spinning to recover',
                                  ns, consecutive_fails)

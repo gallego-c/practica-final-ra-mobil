@@ -1,13 +1,13 @@
 # DWA Local Planner params tuned for TurtleBot3 Waffle Pi in multi-robot SLAM
 # Kinematic limits (smooth and conservative speeds to reduce wheel slip and improve SLAM matching)
-max_vel_x:      0.22
+max_vel_x:      0.26
 min_vel_x:     -0.08
 max_vel_y:      0.0
 min_vel_y:      0.0
-max_vel_trans:  0.22
+max_vel_trans:  0.26
 min_vel_trans:  0.04
-max_vel_theta:  1.5
-min_vel_theta: -1.5
+max_vel_theta:  1.82
+min_vel_theta: -1.82
 min_rot_vel:    0.15
 
 acc_lim_x:      2.0
