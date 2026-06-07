@@ -4,6 +4,9 @@
   <arg name="run_ctf" default="true"/>
   <arg name="world_frame" default="map"/>
   <arg name="merged_map_topic" default="/merged_map"/>
+  <arg name="flag_x" default="-3.2"/>
+  <arg name="flag_y" default="3.2"/>
+  <arg name="rviz" default="true"/>
 
   <arg name="robot1_x" default="-3.0"/>
   <arg name="robot1_y" default="-3.0"/>
@@ -26,6 +29,8 @@
     <arg name="robot2_x" value="$(arg robot2_x)"/>
     <arg name="robot2_y" value="$(arg robot2_y)"/>
     <arg name="robot2_yaw" value="$(arg robot2_yaw)"/>
+    <arg name="flag_x" value="$(arg flag_x)"/>
+    <arg name="flag_y" value="$(arg flag_y)"/>
   </include>
 
   <include file="$(find ctf_navigation)/launch/shared_slam.launch">
@@ -52,8 +57,9 @@
     <arg name="merged_map_topic" value="$(arg merged_map_topic)"/>
   </include>
 
-  <!-- Maximize mapped area: each robot explores frontiers independently. -->
-  <node if="$(arg run_demo)" pkg="ctf_navigation" type="slam_frontier_explorer.py"
+  <!-- Pure SLAM exploration mode: no CTF node owns move_base goals. -->
+  <node if="$(eval arg('run_demo') == 'true' and arg('run_ctf') == 'false')"
+        pkg="ctf_navigation" type="slam_frontier_explorer.py"
         name="slam_frontier_explorer" output="screen">
     <param name="map_frame" value="$(arg world_frame)"/>
     <param name="map_topic" value="$(arg merged_map_topic)"/>
@@ -66,17 +72,40 @@
     <param name="idle_frontier_cycles" value="8"/>
   </node>
 
-  <node if="$(eval arg('run_demo') and arg('run_ctf'))"
-        pkg="ctf_navigation" type="ctf_demo_node"
-        name="ctf_demo_node" output="screen">
-    <param name="frame" value="$(arg world_frame)"/>
+  <group if="$(eval arg('run_demo') == 'true' and arg('run_ctf') == 'true')"
+         ns="robot1">
+    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
+          output="screen">
+      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
+      <param name="camera_topic" value="camera/rgb/image_raw"/>
+      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
+      <param name="base_frame" value="robot1/base_footprint"/>
+      <param name="map_frame" value="$(arg world_frame)"/>
+    </node>
+  </group>
+
+  <group if="$(eval arg('run_demo') == 'true' and arg('run_ctf') == 'true')"
+         ns="robot2">
+    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
+          output="screen">
+      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
+      <param name="camera_topic" value="camera/rgb/image_raw"/>
+      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
+      <param name="base_frame" value="robot2/base_footprint"/>
+      <param name="map_frame" value="$(arg world_frame)"/>
+    </node>
+  </group>
+
+  <node if="$(eval arg('run_demo') == 'true' and arg('run_ctf') == 'true')"
+        pkg="ctf_navigation" type="ctf_coordinator_node"
+        name="ctf_coordinator" output="screen">
+    <param name="map_frame" value="$(arg world_frame)"/>
+    <param name="map_topic" value="$(arg merged_map_topic)"/>
+    <param name="detector_node" value="flag_detector"/>
     <param name="robot1_ns" value="robot1"/>
     <param name="robot2_ns" value="robot2"/>
     <param name="robot1_base_frame" value="robot1/base_footprint"/>
     <param name="robot2_base_frame" value="robot2/base_footprint"/>
-    <param name="flag_x" value="-3.2"/>
-    <param name="flag_y" value="3.2"/>
-    <param name="flag_yaw" value="1.57"/>
     <param name="robot1_base_x" value="$(arg robot1_x)"/>
     <param name="robot1_base_y" value="$(arg robot1_y)"/>
     <param name="robot1_base_yaw" value="$(arg robot1_yaw)"/>
@@ -84,19 +113,25 @@
     <param name="robot2_base_y" value="$(arg robot2_y)"/>
     <param name="robot2_base_yaw" value="$(arg robot2_yaw)"/>
     <param name="catch_distance" value="0.65"/>
-    <param name="flag_capture_distance" value="0.45"/>
-    <param name="chase_rate_hz" value="1.0"/>
-    <param name="goal_timeout" value="180.0"/>
-    <param name="guided_exploration" value="false"/>
-    <param name="wait_for_exploration_topic" value="/slam_exploration/complete"/>
-    <param name="exploration_wait_timeout" value="320.0"/>
-    <param name="wait_for_map_topic" value="$(arg merged_map_topic)"/>
-    <param name="map_wait_timeout" value="90.0"/>
-    <param name="map_min_width" value="80"/>
-    <param name="map_min_known_cells" value="800"/>
-    <param name="startup_delay" value="8.0"/>
-    <param name="navigation_startup_delay" value="30.0"/>
-    <param name="move_base_wait_timeout" value="120.0"/>
-    <param name="pose_wait_timeout" value="30.0"/>
+    <param name="flag_capture_distance" value="0.40"/>
+    <param name="flag_standoff_distance" value="0.20"/>
+    <param name="capture_pause_sec" value="3.0"/>
+    <param name="flag_memory_timeout" value="5.0"/>
+    <param name="waypoint_reached_dist" value="0.55"/>
+    <param name="chase_goal_period" value="1.0"/>
+    <param name="explore_step" value="0.80"/>
+    <param name="explore_clearance" value="0.25"/>
+    <param name="map_wait_timeout" value="120.0"/>
+    <param name="trail_min_distance" value="0.05"/>
+    <param name="trail_max_poses" value="2000"/>
+    <param name="intercept_enabled" value="true"/>
+    <param name="intercept_direct_chase_distance" value="0.85"/>
+    <param name="intercept_arrival_margin" value="0.30"/>
+    <param name="intercept_step" value="0.25"/>
+    <param name="intercept_min_lead" value="1.0"/>
+    <param name="rate_hz" value="5.0"/>
   </node>
+
+  <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz"
+        args="-d $(find ctf_navigation)/rviz/ctf_game.rviz"/>
 </launch>

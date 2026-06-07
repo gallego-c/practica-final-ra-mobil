@@ -11,6 +11,12 @@
   <arg name="flag_x" default="-3.2"/>
   <arg name="flag_y" default="3.2"/>
 
+  <!-- Keep Gazebo transport discovery local. This avoids intermittent WSL
+       discovery failures when Gazebo advertises internal topics such as
+       /robot1/joint_cmd. -->
+  <env name="GAZEBO_IP" value="127.0.0.1"/>
+  <env name="GAZEBO_MASTER_URI" value="http://127.0.0.1:11345"/>
+
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
     <arg name="world_name" value="$(find ctf_navigation)/worlds/ctf_world.world"/>
     <arg name="paused" value="false"/>

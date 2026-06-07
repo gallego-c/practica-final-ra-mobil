@@ -20,8 +20,13 @@ class ExplorationPlanner
 public:
   void configure(double step_m, double clearance_m);
 
-  /// Construye la rejilla de waypoints (idempotente: no regenera si ya hay).
+  /// Builds the waypoint grid once, preserving the original static-map behavior.
   void buildFromMap(const nav_msgs::OccupancyGrid& grid);
+
+  /// Rebuilds waypoints from the latest map. In SLAM maps, frontier-like
+  /// waypoints near unknown cells are preferred; fully known maps fall back to
+  /// coverage waypoints.
+  void updateFromMap(const nav_msgs::OccupancyGrid& grid);
 
   bool ready() const { return !waypoints_.empty(); }
   const std::vector<Waypoint>& waypoints() const { return waypoints_; }

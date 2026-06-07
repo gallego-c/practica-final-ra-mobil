@@ -111,7 +111,7 @@ Exploración en paralelo con mapa fusionado:
 roslaunch ctf_navigation slam_demo.launch run_ctf:=false
 ```
 
-Exploración + CTF después de cubrir el mapa:
+CTF realista con mapa fusionado, detección por cámara e interceptación:
 
 ```bash
 roslaunch ctf_navigation slam_demo.launch local_planner:=5d run_demo:=true

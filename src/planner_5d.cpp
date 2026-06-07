@@ -254,9 +254,6 @@ bool Planner5D::computeVelocityCommands(geometry_msgs::Twist& cmd_vel)
         path_dist = geometry::distance2D(rollout.x, rollout.y, target_x, target_y);
       }
 
-      const double target_dist = geometry::distance2D(rollout.x, rollout.y, target_x, target_y);
-      const double final_goal_dist =
-          geometry::distance2D(rollout.x, rollout.y, goal_x, goal_y);
       const double desired_heading = std::atan2(target_y - rollout.y, target_x - rollout.x);
       const double heading_error =
           std::fabs(geometry::normalizeAngle(desired_heading - rollout.theta));

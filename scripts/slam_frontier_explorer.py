@@ -354,7 +354,7 @@ class SlamFrontierExplorer:
 
             if self._idle_cycles >= self.idle_frontier_cycles:
                 rospy.loginfo('No frontiers for %d cycles — exploration done',
-                              self._idle_frontier_cycles)
+                              self._idle_cycles)
                 break
 
             rate.sleep()

@@ -13,7 +13,7 @@
   <arg name="localization"  default="static"/>
   <arg name="flag_x"        default="-3.2"/>
   <arg name="flag_y"        default="3.2"/>
-  <arg name="rviz"          default="false"/>
+  <arg name="rviz"          default="true"/>
 
   <!-- ── Simulación Gazebo + bandera ────────────────────────────────────────-->
   <include file="$(find ctf_navigation)/launch/simulation.launch">
@@ -56,6 +56,7 @@
   <node pkg="ctf_navigation" type="ctf_coordinator_node" name="ctf_coordinator"
         output="screen">
     <param name="map_frame" value="map"/>
+    <param name="map_topic" value="/map"/>
     <param name="detector_node" value="flag_detector"/>
 
     <param name="robot1_ns" value="robot1"/>
@@ -80,6 +81,14 @@
 
     <param name="explore_step" value="1.0"/>
     <param name="explore_clearance" value="0.30"/>
+    <param name="map_wait_timeout" value="60.0"/>
+    <param name="trail_min_distance" value="0.05"/>
+    <param name="trail_max_poses" value="2000"/>
+    <param name="intercept_enabled" value="true"/>
+    <param name="intercept_direct_chase_distance" value="0.85"/>
+    <param name="intercept_arrival_margin" value="0.30"/>
+    <param name="intercept_step" value="0.25"/>
+    <param name="intercept_min_lead" value="1.0"/>
     <param name="rate_hz" value="5.0"/>
   </node>
 
