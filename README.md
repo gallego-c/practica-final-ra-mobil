@@ -1,133 +1,113 @@
 # ctf_navigation
 
 Juego **Capture The Flag** con dos TurtleBot3 Waffle Pi en Gazebo (ROS Noetic).
-Todo el código de ejecución está en **C++** (sin nodos Python).
 
-Los robots exploran el mapa, detectan la bandera con la **cámara**, planifican con
-`move_base`, y el primero que la captura vuelve a su base mientras el otro lo persigue.
-
----
-
-## Estructura del paquete
-
-```
-ctf_navigation/
-├── include/ctf_navigation/
-# ctf_navigation
-
-Juego **Capture The Flag** con dos TurtleBot3 Waffle Pi en Gazebo (ROS Noetic).
-El núcleo del juego está en C++, con utilidades Python para SLAM y soporte multi-robot.
-
-Los robots pueden jugar al CTF clásico, explorar con SLAM en paralelo y compartir un mapa fusionado para navegar hacia la bandera.
-
----
-
-## Estructura del paquete
-
-```text
-ctf_navigation/
-├── include/ctf_navigation/
-│   ├── common/
-│   ├── vision/
-│   ├── game/
-│   └── planner_5d.h
-├── src/
-│   ├── nodes/
-│   ├── game/
-│   ├── vision/
-│   └── planner_5d.cpp
-├── scripts/
-│   ├── generate_ctf_map.py
-│   ├── robot_obstacle_publisher.py
-│   └── slam_frontier_explorer.py
-├── launch/
-│   ├── ctf_game.launch
-│   ├── ctf_demo.launch
-│   ├── simulation.launch
-│   ├── navigation.launch
-│   ├── gmapping.launch
-│   ├── map_merge.launch
-│   ├── shared_slam.launch
-│   ├── slam_navigation.launch
-│   └── slam_demo.launch
-├── params/
-├── maps/
-├── models/ctf_flag.urdf
-└── worlds/ctf_world.world
-```
+Incluye:
+- **Visión** (detección de bandera con cámara + LIDAR) — branch `visio`
+- **SLAM multi-robot** (gmapping + map_merge + exploración por fronteras) — branch `slam`
 
 ---
 
 ## Requisitos
 
-Ubuntu 20.04 + ROS Noetic:
-
 ```bash
-sudo apt install ros-noetic-turtlebot3-description ros-noetic-turtlebot3-gazebo \
-  ros-noetic-move-base ros-noetic-dwa-local-planner ros-noetic-global-planner \
-  ros-noetic-map-server ros-noetic-cv-bridge ros-noetic-gmapping \
-  ros-noetic-multirobot-map-merge ros-noetic-rospy ros-noetic-tf \
-  libopencv-dev ros-noetic-gazebo-ros
+sudo apt install \
+  ros-noetic-turtlebot3-gazebo ros-noetic-turtlebot3-description \
+  ros-noetic-turtlebot3-navigation ros-noetic-move-base \
+  ros-noetic-dwa-local-planner ros-noetic-global-planner \
+  ros-noetic-map-server ros-noetic-gmapping ros-noetic-multirobot-map-merge \
+  ros-noetic-cv-bridge libopencv-dev ros-noetic-gazebo-ros
 
 export TURTLEBOT3_MODEL=waffle_pi
 echo 'export TURTLEBOT3_MODEL=waffle_pi' >> ~/.bashrc
 ```
 
----
-
 ## Compilación
 
 ```bash
-cd ~/catkin_ws/src
-# copiar o enlazar el paquete ctf_navigation aquí
-cd ~/catkin_ws
-catkin_make
-source devel/setup.bash
+cd ~/catkin_ws && catkin_make
+source /opt/ros/noetic/setup.bash
+source ~/catkin_ws/devel/setup.bash
+
+rospack find ctf_navigation
+ls $(rospack find ctf_navigation)/launch/slam_demo.launch
 ```
 
 ---
 
-## Uso
-
-### CTF clásico
+## Uso — Juego con visión (`visio`)
 
 ```bash
 roslaunch ctf_navigation ctf_game.launch
+roslaunch ctf_navigation ctf_game.launch local_planner:=5d
 ```
 
-### Modo oráculo
-
-Ambos robots van directos a la bandera, sin exploración ni visión:
+Modo oráculo (sin visión, prueba de planificadores):
 
 ```bash
-roslaunch ctf_navigation ctf_demo.launch
+roslaunch ctf_navigation ctf_demo.launch local_planner:=5d
 ```
 
-### SLAM multi-robot
+---
 
-Exploración en paralelo con mapa fusionado:
+## Uso — SLAM multi-robot (`slam`)
+
+Solo exploración (maximizar mapa desconocido):
 
 ```bash
-roslaunch ctf_navigation slam_demo.launch run_ctf:=false
+roslaunch ctf_navigation slam_demo.launch run_ctf:=false local_planner:=5d
 ```
 
-CTF realista con mapa fusionado, detección por cámara e interceptación:
+Exploración + CTF oráculo después:
 
 ```bash
 roslaunch ctf_navigation slam_demo.launch local_planner:=5d run_demo:=true
 ```
 
-### Launches útiles
+Otros launches SLAM:
+- `roslaunch ctf_navigation shared_slam.launch` — gmapping + map merge
+- `roslaunch ctf_navigation slam_navigation.launch` — move_base sobre `/merged_map`
+- `roslaunch ctf_navigation simulation.launch` — solo Gazebo
 
-- Gazebo solo: `roslaunch ctf_navigation simulation.launch`
-- Navegación sobre un mapa ya conocido: `roslaunch ctf_navigation navigation.launch`
-- GMapping por robot: `roslaunch ctf_navigation gmapping.launch`
-- Fusión de mapas: `roslaunch ctf_navigation map_merge.launch`
+---
 
-### Utilidad offline
+## Estructura
 
-```bash
-python3 $(rospack find ctf_navigation)/scripts/generate_ctf_map.py
+```
+include/ctf_navigation/
+  common/     geometry, markers, move_base client, slam_wait
+  vision/     detección bandera roja
+  game/       exploración y agente
+  planner_5d.h
+
+src/nodes/
+  ctf_coordinator_node.cpp   # juego realista
+  ctf_demo_node.cpp          # oráculo (+ esperas SLAM)
+  flag_detector_node.cpp
+  robot_obstacle_publisher_node.cpp
+
+scripts/
+  slam_frontier_explorer.py  # exploración por fronteras (SLAM)
+  robot_obstacle_publisher.py
 ```
 
-(Los nodos en ejecución mezclan C++ y Python según el modo.)
+---
+
+## Nodos
+
+| Nodo | Función |
+|------|---------|
+| `ctf_coordinator_node` | Exploración + visión + captura + persecución |
+| `ctf_demo_node` | Oráculo (coordenadas conocidas) |
+| `flag_detector_node` | Visión HSV + LIDAR |
+| `slam_frontier_explorer` | Exploración SLAM por fronteras |
+| `robot_obstacle_publisher` | Evita colisión entre robots (SLAM) |
+
+---
+
+## Visualización
+
+```bash
+rosrun rviz rviz
+rqt_image_view /robot1/flag_detector/debug_image
+```

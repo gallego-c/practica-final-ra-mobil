@@ -1,0 +1,27 @@
+# explore_lite configuration parameters for TurtleBot3 Waffle Pi (robot1)
+robot_base_frame: base_footprint
+costmap_topic: move_base/global_costmap/costmap
+costmap_updates_topic: move_base/global_costmap/costmap_updates
+visualize: true
+
+# Planning frequency (in Hz) to search for new frontiers
+planner_frequency: 0.33 # Plan a new frontier every 3 seconds
+
+# Timeout (in seconds) to check if the robot has made progress towards its goal.
+# If the robot moves less than the costmap resolution in this time, it aborts the goal.
+progress_timeout: 15.0
+
+# Scoring weights for selecting frontiers:
+# - potential_scale: Weight for the distance to the frontier (larger value = prefers closer frontiers)
+# - gain_scale: Weight for the size of the frontier (larger value = prefers larger frontiers)
+potential_scale: 3.0
+gain_scale: 1.0
+orientation_scale: 0.0
+
+# Close loops option (adds a small bias to revisit previously visited nodes to keep localization stable)
+close_loops: true
+
+# Minimum frontier size (in meters) to consider for exploration.
+# Default is 0.5m. Lowering this to 0.15m (3 cells) ensures that the robot 
+# will discover and map the tiny remaining unmapped corners instead of stopping prematurely.
+min_frontier_size: 0.15

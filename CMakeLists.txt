@@ -107,6 +107,7 @@ install(DIRECTORY launch params rviz worlds models maps
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
 
+# SLAM flow scripts (frontier explorer + optional Python obstacle publisher)
 catkin_install_python(PROGRAMS
   scripts/robot_obstacle_publisher.py
   scripts/slam_frontier_explorer.py

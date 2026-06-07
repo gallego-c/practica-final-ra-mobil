@@ -12,6 +12,7 @@
 #include "ctf_navigation/common/geometry.hpp"
 #include "ctf_navigation/common/markers.hpp"
 #include "ctf_navigation/common/move_base_client.hpp"
+#include "ctf_navigation/common/slam_wait.hpp"
 #include "ctf_navigation/common/tf_helper.hpp"
 #include "ctf_navigation/game/types.hpp"
 
@@ -229,16 +230,60 @@ int main(int argc, char** argv)
 
   const OracleConfig cfg = loadConfig(pnh);
 
+  double navigation_startup_delay = 0.0;
+  double move_base_wait_timeout = 120.0;
+  std::string wait_for_map_topic;
+  double map_wait_timeout = 90.0;
+  int map_min_width = 80;
+  int map_min_known_cells = 800;
+  std::string wait_for_exploration_topic;
+  double exploration_wait_timeout = 320.0;
+  double startup_delay = 0.0;
+
+  pnh.param("navigation_startup_delay", navigation_startup_delay, navigation_startup_delay);
+  pnh.param("move_base_wait_timeout", move_base_wait_timeout, move_base_wait_timeout);
+  pnh.param("wait_for_map_topic", wait_for_map_topic, wait_for_map_topic);
+  pnh.param("map_wait_timeout", map_wait_timeout, map_wait_timeout);
+  pnh.param("map_min_width", map_min_width, map_min_width);
+  pnh.param("map_min_known_cells", map_min_known_cells, map_min_known_cells);
+  pnh.param("wait_for_exploration_topic", wait_for_exploration_topic,
+            wait_for_exploration_topic);
+  pnh.param("exploration_wait_timeout", exploration_wait_timeout, exploration_wait_timeout);
+  pnh.param("startup_delay", startup_delay, startup_delay);
+
+  if (navigation_startup_delay > 0.0)
+  {
+    ROS_INFO("Navigation startup delay: %.1f s", navigation_startup_delay);
+    ros::Duration(navigation_startup_delay).sleep();
+  }
+
   const RobotMeta meta0{cfg.robot1_ns, cfg.robot1_base_frame, cfg.robot1_home};
   const RobotMeta meta1{cfg.robot2_ns, cfg.robot2_base_frame, cfg.robot2_home};
 
   ctf_navigation::MoveBaseClientWrapper mb0(cfg.robot1_ns);
   ctf_navigation::MoveBaseClientWrapper mb1(cfg.robot2_ns);
 
-  if (!mb0.waitForServer() || !mb1.waitForServer())
+  if (!mb0.waitForServer(move_base_wait_timeout) ||
+      !mb1.waitForServer(move_base_wait_timeout))
   {
     return 1;
   }
+
+  if (startup_delay > 0.0)
+  {
+    ros::Duration(startup_delay).sleep();
+  }
+
+  if (!ctf_navigation::slam_wait::waitForNavigationMap(
+          wait_for_map_topic, map_wait_timeout,
+          static_cast<unsigned int>(map_min_width),
+          static_cast<unsigned int>(map_min_known_cells)))
+  {
+    return 2;
+  }
+
+  ctf_navigation::slam_wait::waitForExplorationComplete(wait_for_exploration_topic,
+                                                        exploration_wait_timeout);
 
   tf2_ros::Buffer tf_buffer;
   tf2_ros::TransformListener tf_listener(tf_buffer);

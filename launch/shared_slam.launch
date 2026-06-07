@@ -11,11 +11,30 @@
   <arg name="robot2_init_y" default="0.0"/>
   <arg name="robot2_init_yaw" default="0.0"/>
 
+  <!-- Laser scan filters to remove the other robot's body from GMapping and move_base -->
+  <group ns="robot1">
+    <node pkg="ctf_navigation" type="laser_obstacle_filter.py" name="laser_obstacle_filter" output="screen">
+      <param name="obstacle_frame" value="robot2/base_footprint"/>
+      <param name="robot_radius" value="0.32"/>
+      <remap from="scan" to="/robot1/scan"/>
+      <remap from="scan_filtered" to="/robot1/scan_filtered"/>
+    </node>
+  </group>
+
+  <group ns="robot2">
+    <node pkg="ctf_navigation" type="laser_obstacle_filter.py" name="laser_obstacle_filter" output="screen">
+      <param name="obstacle_frame" value="robot1/base_footprint"/>
+      <param name="robot_radius" value="0.32"/>
+      <remap from="scan" to="/robot2/scan"/>
+      <remap from="scan_filtered" to="/robot2/scan_filtered"/>
+    </node>
+  </group>
+
   <!-- Each robot builds its own map frame. Keeping these frames separate avoids
        two gmapping nodes publishing conflicting map -> odom transforms. -->
   <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping"
         ns="robot1" output="screen">
-    <remap from="scan" to="/robot1/scan"/>
+    <remap from="scan" to="/robot1/scan_filtered"/>
     <rosparam file="$(find ctf_navigation)/params/gmapping_robot1.yaml"
               command="load"/>
     <param name="base_frame" value="robot1/base_footprint"/>
@@ -25,7 +44,7 @@
 
   <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping"
         ns="robot2" output="screen">
-    <remap from="scan" to="/robot2/scan"/>
+    <remap from="scan" to="/robot2/scan_filtered"/>
     <rosparam file="$(find ctf_navigation)/params/gmapping_robot2.yaml"
               command="load"/>
     <param name="base_frame" value="robot2/base_footprint"/>
