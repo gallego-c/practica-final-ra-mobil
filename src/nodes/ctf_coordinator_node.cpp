@@ -3,14 +3,18 @@
  * @brief Coordinador del juego CTF: exploración, visión, captura y persecución.
  */
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cmath>
+#include <fstream>
+#include <sstream>
 #include <string>
 
 #include <boost/optional.hpp>
 
 #include <nav_msgs/OccupancyGrid.h>
 #include <nav_msgs/Path.h>
+#include <ros/package.h>
 #include <ros/ros.h>
 #include <std_msgs/Bool.h>
 #include <std_msgs/String.h>
@@ -25,6 +29,34 @@
 
 namespace
 {
+
+// #region agent log
+std::string debugLogPath()
+{
+  static const std::string path = ros::package::getPath("ctf_navigation") + "/debug-36a89d.log";
+  return path;
+}
+
+void agentDebugLog(const char* location,
+                   const char* message,
+                   const char* hypothesis_id,
+                   const std::string& data_json)
+{
+  const auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::system_clock::now().time_since_epoch())
+                             .count();
+  const std::string line = std::string("{\"sessionId\":\"36a89d\",\"location\":\"") + location +
+                           "\",\"message\":\"" + message + "\",\"hypothesisId\":\"" +
+                           hypothesis_id + "\",\"data\":" + data_json +
+                           ",\"timestamp\":" + std::to_string(timestamp) + "}\n";
+
+  std::ofstream log(debugLogPath(), std::ios::app);
+  if (log)
+  {
+    log << line;
+  }
+}
+// #endregion
 
 struct CoordinatorConfig
 {
@@ -45,10 +77,14 @@ struct CoordinatorConfig
   double trail_min_distance = 0.05;
   int trail_max_poses = 2000;
   bool intercept_enabled = true;
-  double intercept_direct_chase_distance = 0.85;
+  double intercept_direct_chase_distance = 1.25;
   double intercept_arrival_margin = 0.30;
   double intercept_step = 0.25;
   double intercept_min_lead = 1.00;
+  double intercept_carrier_move_threshold = 1.25;
+  double carrier_home_resend_cooldown = 3.0;
+  double direct_chase_refresh_sec = 2.0;
+  double direct_chase_carrier_move = 0.25;
 
   ctf_navigation::game::HomePose robot1_home{-3.0, -3.0, 0.0};
   ctf_navigation::game::HomePose robot2_home{3.0, 3.0, 3.1416};
@@ -224,8 +260,14 @@ private:
         last_waypoint_count_ = count;
         if (previous_waypoint_count > 0)
         {
-          agent0_.clearTargetWaypoint();
-          agent1_.clearTargetWaypoint();
+          if (agent0_.searchState() == ctf_navigation::game::SearchState::EXPLORING)
+          {
+            agent0_.clearTargetWaypoint();
+          }
+          if (agent1_.searchState() == ctf_navigation::game::SearchState::EXPLORING)
+          {
+            agent1_.clearTargetWaypoint();
+          }
         }
       }
     }
@@ -236,6 +278,103 @@ private:
                         "(try lowering explore_clearance)",
                         msg->info.width, msg->info.height);
     }
+  }
+
+  void updateSearchFlagStates()
+  {
+    for (size_t i = 0; i < kNumAgents; ++i)
+    {
+      auto& ag = agent(i);
+      if (ag.hasFreshFlagEstimate(cfg_.flag_memory_timeout))
+      {
+        if (ag.searchState() != ctf_navigation::game::SearchState::PURSUING_FLAG)
+        {
+          ROS_INFO("CTF FLAG: %s localized the flag; switching to approach", ag.ns().c_str());
+          ag.setSearchState(ctf_navigation::game::SearchState::PURSUING_FLAG);
+          ag.clearTargetWaypoint();
+          ag.resetFlagGoalThrottle();
+        }
+      }
+      else if (ag.searchState() != ctf_navigation::game::SearchState::EXPLORING)
+      {
+        ROS_INFO("CTF FLAG: %s lost the estimate; returning to exploration", ag.ns().c_str());
+        ag.setSearchState(ctf_navigation::game::SearchState::EXPLORING);
+        ag.resetFlagGoalThrottle();
+        ag.cancelGoals();
+      }
+    }
+  }
+
+  boost::optional<int> findFirstCaptureCandidate() const
+  {
+    for (size_t i = 0; i < kNumAgents; ++i)
+    {
+      const auto& ag = agent(i);
+      const auto pose = ag.poseInMap();
+      if (!pose || !ag.hasFreshFlagEstimate(cfg_.flag_memory_timeout))
+      {
+        continue;
+      }
+
+      const auto est = ag.flagEstimate();
+      if (!est)
+      {
+        continue;
+      }
+
+      const double distance_to_flag = ctf_navigation::geometry::distance2D(
+          pose->x, pose->y, est->first, est->second);
+      if (distance_to_flag <= cfg_.flag_capture_distance)
+      {
+        return static_cast<int>(i);
+      }
+    }
+
+    return boost::none;
+  }
+
+  void sendFlagApproachGoals()
+  {
+    for (size_t i = 0; i < kNumAgents; ++i)
+    {
+      auto& ag = agent(i);
+      if (ag.searchState() != ctf_navigation::game::SearchState::PURSUING_FLAG)
+      {
+        continue;
+      }
+
+      const auto pose = ag.poseInMap();
+      if (!pose || !ag.hasFreshFlagEstimate(cfg_.flag_memory_timeout))
+      {
+        continue;
+      }
+
+      const auto est = ag.flagEstimate();
+      if (!est)
+      {
+        continue;
+      }
+
+      if (ag.shouldSendFlagGoal(est->first, est->second, 0.3, 1.0))
+      {
+        const auto goal = makeFlagApproachGoal(*pose, est->first, est->second);
+        const double distance_to_flag = ctf_navigation::geometry::distance2D(
+            pose->x, pose->y, est->first, est->second);
+        ROS_INFO("CTF FLAG: %s approach goal=(%.2f, %.2f) flag=(%.2f, %.2f) distance=%.2f m",
+                 ag.ns().c_str(), goal.x, goal.y, est->first, est->second, distance_to_flag);
+        ag.sendGoal(goal.x, goal.y, goal.yaw);
+      }
+    }
+  }
+
+  void prepareAgentsForChase(int carrier_index)
+  {
+    for (size_t i = 0; i < kNumAgents; ++i)
+    {
+      agent(i).resetForPhaseTransition();
+    }
+
+    publishFlagCarrier(agent(static_cast<size_t>(carrier_index)).ns());
   }
 
   int runSearchPhase()
@@ -270,67 +409,29 @@ private:
     {
       ros::spinOnce();
 
-      for (size_t i = 0; i < kNumAgents; ++i)
+      updateSearchFlagStates();
+
+      const auto capture_candidate = findFirstCaptureCandidate();
+      if (capture_candidate)
       {
-        auto& ag = agent(i);
+        const int carrier_index = *capture_candidate;
+        const auto& ag = agent(static_cast<size_t>(carrier_index));
         const auto pose = ag.poseInMap();
-        if (!pose)
-        {
-          continue;
-        }
+        const auto est = ag.flagEstimate();
+        const double distance_to_flag =
+            (pose && est)
+                ? ctf_navigation::geometry::distance2D(pose->x, pose->y, est->first, est->second)
+                : -1.0;
 
-        const bool fresh = ag.hasFreshFlagEstimate(cfg_.flag_memory_timeout);
-
-        if (fresh)
-        {
-          const auto est = ag.flagEstimate();
-          if (est)
-          {
-            const double distance_to_flag = ctf_navigation::geometry::distance2D(
-                pose->x, pose->y, est->first, est->second);
-            if (distance_to_flag <= cfg_.flag_capture_distance)
-            {
-              ROS_INFO("CTF CAPTURE: %s reached the flag at (%.2f, %.2f), distance=%.2f m",
-                       ag.ns().c_str(), est->first, est->second,
-                       distance_to_flag);
-              publishFlagCarrier(ag.ns());
-              publishGameState("flag_captured");
-              pauseForCapture();
-              return static_cast<int>(i);
-            }
-          }
-        }
-
-        if (fresh)
-        {
-          if (ag.searchState() != ctf_navigation::game::SearchState::PURSUING_FLAG)
-          {
-            ROS_INFO("CTF FLAG: %s localized the flag; switching to approach",
-                     ag.ns().c_str());
-            ag.setSearchState(ctf_navigation::game::SearchState::PURSUING_FLAG);
-            ag.clearTargetWaypoint();
-            ag.resetFlagGoalThrottle();
-          }
-          const auto est = ag.flagEstimate();
-          if (est && ag.shouldSendFlagGoal(est->first, est->second, 0.3, 1.0))
-          {
-            const auto goal = makeFlagApproachGoal(*pose, est->first, est->second);
-            const double distance_to_flag = ctf_navigation::geometry::distance2D(
-                pose->x, pose->y, est->first, est->second);
-            ROS_INFO("CTF FLAG: %s approach goal=(%.2f, %.2f) flag=(%.2f, %.2f) "
-                     "distance=%.2f m",
-                     ag.ns().c_str(), goal.x, goal.y, est->first, est->second,
-                     distance_to_flag);
-            ag.sendGoal(goal.x, goal.y, goal.yaw);
-          }
-        }
-        else if (ag.searchState() != ctf_navigation::game::SearchState::EXPLORING)
-        {
-          ROS_INFO("CTF FLAG: %s lost the estimate; returning to exploration",
-                   ag.ns().c_str());
-          ag.setSearchState(ctf_navigation::game::SearchState::EXPLORING);
-        }
+        ROS_INFO("CTF CAPTURE: %s reached the flag, distance=%.2f m", ag.ns().c_str(),
+                 distance_to_flag);
+        publishFlagCarrier(ag.ns());
+        publishGameState("flag_captured");
+        pauseForCapture();
+        return carrier_index;
       }
+
+      sendFlagApproachGoals();
 
       assignExploration();
       publishMarkers();
@@ -405,25 +506,142 @@ private:
     auto& carrier = agent(carrier_index);
     auto& pursuer = agent(pursuer_index);
 
+    prepareAgentsForChase(carrier_index);
+
     ROS_INFO("CTF PHASE 2 CHASE: %s returns home; %s tries to intercept", carrier.ns().c_str(),
              pursuer.ns().c_str());
     publishGameState("chase");
 
     ros::Rate rate(cfg_.rate_hz);
-    ros::Time last_chase_goal = sendInitialChaseGoals(carrier, pursuer);
+
+    bool has_intercept_goal = false;
+    double last_intercept_x = 0.0;
+    double last_intercept_y = 0.0;
+    double intercept_anchor_cx = 0.0;
+    double intercept_anchor_cy = 0.0;
+    bool pursuer_was_succeeded = false;
+    ros::Time last_carrier_home_resend = ros::Time(0);
+    ros::Time last_direct_chase_sent = ros::Time(0);
+    ros::Time last_carrier_debug_log = ros::Time(0);
+    double last_logged_home_dist = -1.0;
+    int carrier_stuck_ticks = 0;
+
+    const auto sendPursuerDirectChase = [&](const ctf_navigation::tf_helper::Pose2D& cpose,
+                                            const ctf_navigation::tf_helper::Pose2D& ppose) {
+      const double yaw =
+          std::atan2(cpose.y - ppose.y, cpose.x - ppose.x);
+      pursuer.sendGoal(cpose.x, cpose.y, yaw);
+      has_intercept_goal = true;
+      intercept_anchor_cx = cpose.x;
+      intercept_anchor_cy = cpose.y;
+      pursuer_was_succeeded = false;
+      last_direct_chase_sent = ros::Time::now();
+    };
+
+    const auto sendPursuerIntercept = [&](const ctf_navigation::tf_helper::Pose2D& cpose,
+                                          const ctf_navigation::tf_helper::Pose2D& ppose) {
+      const auto intercept = makeInterceptionGoal(cpose, ppose, carrier.home());
+      pursuer.sendGoal(intercept.x, intercept.y, intercept.yaw);
+      has_intercept_goal = true;
+      last_intercept_x = intercept.x;
+      last_intercept_y = intercept.y;
+      intercept_anchor_cx = cpose.x;
+      intercept_anchor_cy = cpose.y;
+      pursuer_was_succeeded = false;
+    };
+
+    const auto maybeUpdatePursuerIntercept =
+        [&](const ctf_navigation::tf_helper::Pose2D& cpose,
+            const ctf_navigation::tf_helper::Pose2D& ppose) {
+          const double carrier_move = ctf_navigation::geometry::distance2D(
+              intercept_anchor_cx, intercept_anchor_cy, cpose.x, cpose.y);
+          if (!has_intercept_goal ||
+              carrier_move >= cfg_.intercept_carrier_move_threshold)
+          {
+            sendPursuerIntercept(cpose, ppose);
+          }
+        };
+
+    carrier.cancelGoals();
+    pursuer.cancelGoals();
+
+    const ros::Time settle_until = ros::Time::now() + ros::Duration(0.5);
+    while (ros::ok() && ros::Time::now() < settle_until)
+    {
+      ros::spinOnce();
+      rate.sleep();
+    }
+
+    const ros::Time tf_wait_until = ros::Time::now() + ros::Duration(3.0);
+    boost::optional<ctf_navigation::tf_helper::Pose2D> initial_cpose;
+    boost::optional<ctf_navigation::tf_helper::Pose2D> initial_ppose;
+    while (ros::ok() && ros::Time::now() < tf_wait_until)
+    {
+      ros::spinOnce();
+      initial_cpose = carrier.poseInMap();
+      initial_ppose = pursuer.poseInMap();
+      if (initial_cpose && initial_ppose)
+      {
+        break;
+      }
+      rate.sleep();
+    }
+
+    if (initial_cpose && initial_ppose)
+    {
+      carrier.sendGoal(carrier.home().x, carrier.home().y, carrier.home().yaw);
+      const double start_home_dist = ctf_navigation::geometry::distance2D(
+          initial_cpose->x, initial_cpose->y, carrier.home().x, carrier.home().y);
+      // #region agent log
+      {
+        std::ostringstream data;
+        data << "{\"carrierNs\":\"" << carrier.ns() << "\",\"homeX\":" << carrier.home().x
+             << ",\"homeY\":" << carrier.home().y << ",\"carrierX\":" << initial_cpose->x
+             << ",\"carrierY\":" << initial_cpose->y << ",\"homeDist\":" << start_home_dist
+             << ",\"carrierMbState\":\"" << carrier.moveBaseStateText() << "\"}";
+        agentDebugLog("ctf_coordinator_node.cpp:runChasePhase",
+                      "carrier home goal sent at chase start", "C", data.str());
+      }
+      // #endregion
+      ROS_INFO("CTF CHASE START: %s -> base (%.2f, %.2f)",
+               carrier.ns().c_str(), carrier.home().x, carrier.home().y);
+
+      const ros::Time pursuer_start_after =
+          ros::Time::now() + ros::Duration(1.0);
+      while (ros::ok() && ros::Time::now() < pursuer_start_after)
+      {
+        ros::spinOnce();
+        rate.sleep();
+      }
+
+      initial_cpose = carrier.poseInMap();
+      initial_ppose = pursuer.poseInMap();
+      if (initial_cpose && initial_ppose)
+      {
+        sendPursuerIntercept(*initial_cpose, *initial_ppose);
+        ROS_INFO("CTF CHASE START: %s -> intercept (%.2f, %.2f)",
+                 pursuer.ns().c_str(), last_intercept_x, last_intercept_y);
+      }
+    }
+    else
+    {
+      // #region agent log
+      {
+        std::ostringstream data;
+        data << "{\"carrierNs\":\"" << carrier.ns() << "\",\"hasCarrierPose\":"
+             << (initial_cpose.has_value() ? "true" : "false") << ",\"hasPursuerPose\":"
+             << (initial_ppose.has_value() ? "true" : "false") << "}";
+        agentDebugLog("ctf_coordinator_node.cpp:runChasePhase",
+                      "chase start missing TF pose", "C", data.str());
+      }
+      // #endregion
+      ROS_WARN("Chase started without initial pursuer goal: missing TF pose");
+    }
 
     while (ros::ok())
     {
       ros::spinOnce();
       publishCaptureState(true);
-
-      if (carrier.moveBaseSucceeded())
-      {
-        pursuer.cancelGoals();
-        ROS_INFO("CTF RESULT: %s reached base before being caught", carrier.ns().c_str());
-        publishGameState("carrier_won");
-        return 0;
-      }
 
       const auto cpose = carrier.poseInMap();
       const auto ppose = pursuer.poseInMap();
@@ -435,8 +653,11 @@ private:
 
       const double d = ctf_navigation::geometry::distance2D(
           cpose->x, cpose->y, ppose->x, ppose->y);
-      ROS_INFO_THROTTLE(1.0, "Distance %s-%s: %.2f m", carrier.ns().c_str(),
-                        pursuer.ns().c_str(), d);
+      const double carrier_home_dist = ctf_navigation::geometry::distance2D(
+          cpose->x, cpose->y, carrier.home().x, carrier.home().y);
+      ROS_INFO_THROTTLE(1.0, "Distance %s-%s: %.2f m; %s home dist: %.2f m",
+                        carrier.ns().c_str(), pursuer.ns().c_str(), d,
+                        carrier.ns().c_str(), carrier_home_dist);
 
       if (d <= cfg_.catch_distance)
       {
@@ -447,15 +668,124 @@ private:
         return 0;
       }
 
-      if ((ros::Time::now() - last_chase_goal).toSec() >= cfg_.chase_goal_period)
+      if (carrier_home_dist <= cfg_.waypoint_reached_dist)
       {
-        const auto intercept = makeInterceptionGoal(*cpose, *ppose, carrier.home());
-        pursuer.sendGoal(intercept.x, intercept.y, intercept.yaw);
-        ROS_INFO_THROTTLE(1.0,
-                          "CTF CHASE: %s intercept goal=(%.2f, %.2f) on %s route home",
-                          pursuer.ns().c_str(), intercept.x, intercept.y,
-                          carrier.ns().c_str());
-        last_chase_goal = ros::Time::now();
+        pursuer.cancelGoals();
+        ROS_INFO("CTF RESULT: %s reached base before being caught", carrier.ns().c_str());
+        publishGameState("carrier_won");
+        return 0;
+      }
+
+      if (carrier.moveBaseTerminal() && !carrier.moveBaseSucceeded())
+      {
+        const ros::Time now = ros::Time::now();
+        const double cooldown_left =
+            cfg_.carrier_home_resend_cooldown - (now - last_carrier_home_resend).toSec();
+        if ((now - last_carrier_home_resend).toSec() >= cfg_.carrier_home_resend_cooldown)
+        {
+          carrier.sendGoal(carrier.home().x, carrier.home().y, carrier.home().yaw);
+          last_carrier_home_resend = now;
+          // #region agent log
+          {
+            std::ostringstream data;
+            data << "{\"carrierNs\":\"" << carrier.ns() << "\",\"homeDist\":" << carrier_home_dist
+                 << ",\"carrierMbState\":\"" << carrier.moveBaseStateText() << "\"}";
+            agentDebugLog("ctf_coordinator_node.cpp:runChasePhase",
+                          "carrier home goal re-sent after failure", "B", data.str());
+          }
+          // #endregion
+          ROS_WARN("CTF CHASE: %s home goal re-sent after navigation failure",
+                   carrier.ns().c_str());
+        }
+        else
+        {
+          // #region agent log
+          {
+            std::ostringstream data;
+            data << "{\"carrierNs\":\"" << carrier.ns() << "\",\"homeDist\":" << carrier_home_dist
+                 << ",\"cooldownLeftSec\":" << cooldown_left << ",\"carrierMbState\":\""
+                 << carrier.moveBaseStateText() << "\"}";
+            agentDebugLog("ctf_coordinator_node.cpp:runChasePhase",
+                          "carrier resend blocked by cooldown", "B", data.str());
+          }
+          // #endregion
+        }
+      }
+
+      if ((ros::Time::now() - last_carrier_debug_log).toSec() >= 2.0)
+      {
+        if (last_logged_home_dist >= 0.0 &&
+            std::abs(carrier_home_dist - last_logged_home_dist) < 0.05)
+        {
+          ++carrier_stuck_ticks;
+        }
+        else
+        {
+          carrier_stuck_ticks = 0;
+        }
+        // #region agent log
+        {
+          std::ostringstream data;
+          data << "{\"carrierNs\":\"" << carrier.ns() << "\",\"homeDist\":" << carrier_home_dist
+               << ",\"robotDistance\":" << d << ",\"carrierMbState\":\""
+               << carrier.moveBaseStateText() << "\",\"pursuerMbState\":\""
+               << pursuer.moveBaseStateText() << "\",\"directChase\":"
+               << (d <= cfg_.intercept_direct_chase_distance ? "true" : "false")
+               << ",\"stuckTicks\":" << carrier_stuck_ticks << "}";
+          agentDebugLog("ctf_coordinator_node.cpp:runChasePhase", "carrier chase tick", "A",
+                        data.str());
+        }
+        // #endregion
+        last_logged_home_dist = carrier_home_dist;
+        last_carrier_debug_log = ros::Time::now();
+      }
+
+      const bool direct_chase = d <= cfg_.intercept_direct_chase_distance;
+      if (direct_chase)
+      {
+        const double carrier_move = ctf_navigation::geometry::distance2D(
+            intercept_anchor_cx, intercept_anchor_cy, cpose->x, cpose->y);
+        const ros::Time now = ros::Time::now();
+        const bool pursuer_failed =
+            pursuer.moveBaseTerminal() && !pursuer.moveBaseSucceeded();
+        const bool refresh_direct =
+            !has_intercept_goal || carrier_move >= cfg_.direct_chase_carrier_move ||
+            pursuer_failed ||
+            (pursuer.moveBaseSucceeded() && !pursuer_was_succeeded) ||
+            (pursuer.moveBaseSucceeded() &&
+             (now - last_direct_chase_sent).toSec() >= cfg_.direct_chase_refresh_sec);
+        if (refresh_direct)
+        {
+          sendPursuerDirectChase(*cpose, *ppose);
+        }
+        if (pursuer.moveBaseSucceeded())
+        {
+          pursuer_was_succeeded = true;
+        }
+        else
+        {
+          pursuer_was_succeeded = false;
+        }
+      }
+      else if (pursuer.moveBaseSucceeded())
+      {
+        if (!pursuer_was_succeeded)
+        {
+          sendPursuerIntercept(*cpose, *ppose);
+        }
+        pursuer_was_succeeded = true;
+      }
+      else
+      {
+        pursuer_was_succeeded = false;
+        if (pursuer.moveBaseTerminal())
+        {
+          sendPursuerIntercept(*cpose, *ppose);
+        }
+        else
+        {
+          maybeUpdatePursuerIntercept(*cpose, *ppose);
+        }
       }
 
       publishMarkers();
@@ -504,42 +834,6 @@ private:
     std_msgs::String msg;
     msg.data = state;
     game_state_pub_.publish(msg);
-  }
-
-  ros::Time sendInitialChaseGoals(ctf_navigation::game::RobotAgent& carrier,
-                                  ctf_navigation::game::RobotAgent& pursuer)
-  {
-    const ros::Time wait_until = ros::Time::now() + ros::Duration(3.0);
-    boost::optional<ctf_navigation::tf_helper::Pose2D> cpose;
-    boost::optional<ctf_navigation::tf_helper::Pose2D> ppose;
-    ros::Rate rate(cfg_.rate_hz);
-
-    while (ros::ok() && ros::Time::now() < wait_until)
-    {
-      ros::spinOnce();
-      cpose = carrier.poseInMap();
-      ppose = pursuer.poseInMap();
-      if (cpose && ppose)
-      {
-        break;
-      }
-      rate.sleep();
-    }
-
-    carrier.sendGoal(carrier.home().x, carrier.home().y, carrier.home().yaw);
-
-    if (cpose && ppose)
-    {
-      const auto intercept = makeInterceptionGoal(*cpose, *ppose, carrier.home());
-      pursuer.sendGoal(intercept.x, intercept.y, intercept.yaw);
-      ROS_INFO("CTF CHASE START: %s -> base, %s -> intercept (%.2f, %.2f)",
-               carrier.ns().c_str(), pursuer.ns().c_str(),
-               intercept.x, intercept.y);
-      return ros::Time::now();
-    }
-
-    ROS_WARN("Chase started without initial pursuer goal: missing TF pose");
-    return ros::Time(0);
   }
 
   void publishMarkers()
@@ -666,6 +960,14 @@ CoordinatorConfig loadConfig(ros::NodeHandle& pnh)
             cfg.intercept_arrival_margin);
   pnh.param("intercept_step", cfg.intercept_step, cfg.intercept_step);
   pnh.param("intercept_min_lead", cfg.intercept_min_lead, cfg.intercept_min_lead);
+  pnh.param("intercept_carrier_move_threshold", cfg.intercept_carrier_move_threshold,
+            cfg.intercept_carrier_move_threshold);
+  pnh.param("carrier_home_resend_cooldown", cfg.carrier_home_resend_cooldown,
+            cfg.carrier_home_resend_cooldown);
+  pnh.param("direct_chase_refresh_sec", cfg.direct_chase_refresh_sec,
+            cfg.direct_chase_refresh_sec);
+  pnh.param("direct_chase_carrier_move", cfg.direct_chase_carrier_move,
+            cfg.direct_chase_carrier_move);
   pnh.param("robot1_ns", cfg.robot1_ns, cfg.robot1_ns);
   pnh.param("robot2_ns", cfg.robot2_ns, cfg.robot2_ns);
   pnh.param("robot1_base_frame", cfg.robot1_base_frame, cfg.robot1_base_frame);

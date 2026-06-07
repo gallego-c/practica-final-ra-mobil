@@ -128,7 +128,11 @@
     <param name="trail_min_distance" value="0.05"/>
     <param name="trail_max_poses" value="2000"/>
     <param name="intercept_enabled" value="true"/>
-    <param name="intercept_direct_chase_distance" value="0.85"/>
+    <param name="intercept_direct_chase_distance" value="1.25"/>
+    <param name="intercept_carrier_move_threshold" value="1.25"/>
+    <param name="carrier_home_resend_cooldown" value="3.0"/>
+    <param name="direct_chase_refresh_sec" value="2.0"/>
+    <param name="direct_chase_carrier_move" value="0.25"/>
     <param name="intercept_arrival_margin" value="0.30"/>
     <param name="intercept_step" value="0.25"/>
     <param name="intercept_min_lead" value="1.0"/>

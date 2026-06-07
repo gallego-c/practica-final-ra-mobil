@@ -58,6 +58,11 @@ bool RobotAgent::moveBaseTerminal() const
   return move_base_.isTerminal();
 }
 
+std::string RobotAgent::moveBaseStateText() const
+{
+  return move_base_.stateText();
+}
+
 bool RobotAgent::hasFreshFlagEstimate(double timeout_sec) const
 {
   if (!flag_estimate_)
@@ -75,6 +80,14 @@ boost::optional<std::pair<double, double>> RobotAgent::flagEstimate() const
 void RobotAgent::resetFlagGoalThrottle()
 {
   last_flag_goal_ = boost::none;
+}
+
+void RobotAgent::resetForPhaseTransition()
+{
+  search_state_ = SearchState::EXPLORING;
+  target_waypoint_ = -1;
+  resetFlagGoalThrottle();
+  cancelGoals();
 }
 
 bool RobotAgent::shouldSendFlagGoal(double fx, double fy,

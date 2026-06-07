@@ -49,6 +49,7 @@ public:
 
   bool moveBaseSucceeded() const;
   bool moveBaseTerminal() const;
+  std::string moveBaseStateText() const;
 
   // Visión
   bool flagSeen() const { return flag_seen_; }
@@ -63,6 +64,7 @@ public:
   void clearTargetWaypoint() { target_waypoint_ = -1; }
 
   void resetFlagGoalThrottle();
+  void resetForPhaseTransition();
   bool shouldSendFlagGoal(double fx, double fy, double min_move_m, double max_age_sec);
 
   const std::string& ns() const { return ns_; }

@@ -72,6 +72,11 @@ public:
            s == actionlib::SimpleClientGoalState::REJECTED;
   }
 
+  std::string stateText() const
+  {
+    return getState().toString();
+  }
+
 private:
   actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> client_;
   std::string robot_ns_;
