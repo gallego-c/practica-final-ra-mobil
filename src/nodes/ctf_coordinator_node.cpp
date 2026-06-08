@@ -66,6 +66,7 @@ struct CoordinatorConfig
   double rate_hz = 5.0;
   double flag_capture_distance = 0.40;
   double flag_standoff_distance = 0.20;
+  double chase_flag_clearance = 0.75;
   double capture_pause_sec = 3.0;
   double catch_distance = 0.65;
   double flag_memory_timeout = 5.0;
@@ -83,6 +84,8 @@ struct CoordinatorConfig
   double intercept_min_lead = 1.00;
   double intercept_carrier_move_threshold = 1.25;
   double carrier_home_resend_cooldown = 3.0;
+  double carrier_home_stuck_timeout = 6.0;
+  double carrier_home_progress_threshold = 0.10;
   double direct_chase_refresh_sec = 2.0;
   double direct_chase_carrier_move = 0.25;
 
@@ -186,6 +189,45 @@ private:
       goal.x = robot.x;
       goal.y = robot.y;
     }
+    return goal;
+  }
+
+  ApproachGoal makeChaseClearanceGoal(const ctf_navigation::tf_helper::Pose2D& carrier,
+                                      const ctf_navigation::game::HomePose& carrier_home,
+                                      double flag_x,
+                                      double flag_y) const
+  {
+    ApproachGoal goal;
+
+    const double to_home_x = carrier_home.x - flag_x;
+    const double to_home_y = carrier_home.y - flag_y;
+    const double to_home_dist = std::hypot(to_home_x, to_home_y);
+    if (to_home_dist < 1e-3)
+    {
+      const double dx = carrier_home.x - carrier.x;
+      const double dy = carrier_home.y - carrier.y;
+      const double dist = std::hypot(dx, dy);
+      if (dist < 1e-3)
+      {
+        goal.x = carrier.x;
+        goal.y = carrier.y;
+        goal.yaw = carrier_home.yaw;
+        return goal;
+      }
+      const double step = std::min(cfg_.chase_flag_clearance, dist * 0.5);
+      goal.x = carrier.x + (dx / dist) * step;
+      goal.y = carrier.y + (dy / dist) * step;
+      goal.yaw = std::atan2(dy, dx);
+      return goal;
+    }
+
+    const double ux = to_home_x / to_home_dist;
+    const double uy = to_home_y / to_home_dist;
+    const double clearance =
+        std::min(cfg_.chase_flag_clearance, std::max(0.10, to_home_dist - 0.10));
+    goal.x = flag_x + ux * clearance;
+    goal.y = flag_y + uy * clearance;
+    goal.yaw = std::atan2(to_home_y, to_home_x);
     return goal;
   }
 
@@ -523,8 +565,13 @@ private:
     ros::Time last_carrier_home_resend = ros::Time(0);
     ros::Time last_direct_chase_sent = ros::Time(0);
     ros::Time last_carrier_debug_log = ros::Time(0);
+    ros::Time last_carrier_progress_time = ros::Time(0);
+    double last_carrier_progress_home_dist = -1.0;
     double last_logged_home_dist = -1.0;
     int carrier_stuck_ticks = 0;
+    bool carrier_on_home_goal = false;
+    double clearance_goal_x = 0.0;
+    double clearance_goal_y = 0.0;
 
     const auto sendPursuerDirectChase = [&](const ctf_navigation::tf_helper::Pose2D& cpose,
                                             const ctf_navigation::tf_helper::Pose2D& ppose) {
@@ -589,39 +636,55 @@ private:
 
     if (initial_cpose && initial_ppose)
     {
-      carrier.sendGoal(carrier.home().x, carrier.home().y, carrier.home().yaw);
+      ApproachGoal chase_start_goal;
+      const auto flag_est = carrier.flagEstimate();
+      if (flag_est)
+      {
+        chase_start_goal =
+            makeChaseClearanceGoal(*initial_cpose, carrier.home(), flag_est->first, flag_est->second);
+      }
+      else
+      {
+        chase_start_goal = makeChaseClearanceGoal(*initial_cpose, carrier.home(), initial_cpose->x,
+                                                  initial_cpose->y);
+      }
+      clearance_goal_x = chase_start_goal.x;
+      clearance_goal_y = chase_start_goal.y;
+      carrier.sendGoal(chase_start_goal.x, chase_start_goal.y, chase_start_goal.yaw);
+
       const double start_home_dist = ctf_navigation::geometry::distance2D(
           initial_cpose->x, initial_cpose->y, carrier.home().x, carrier.home().y);
+      const double start_flag_dist =
+          flag_est ? ctf_navigation::geometry::distance2D(initial_cpose->x, initial_cpose->y,
+                                                          flag_est->first, flag_est->second)
+                   : -1.0;
+      const double start_clearance_dist = ctf_navigation::geometry::distance2D(
+          initial_cpose->x, initial_cpose->y, clearance_goal_x, clearance_goal_y);
       // #region agent log
       {
         std::ostringstream data;
         data << "{\"carrierNs\":\"" << carrier.ns() << "\",\"homeX\":" << carrier.home().x
              << ",\"homeY\":" << carrier.home().y << ",\"carrierX\":" << initial_cpose->x
-             << ",\"carrierY\":" << initial_cpose->y << ",\"homeDist\":" << start_home_dist
+             << ",\"carrierY\":" << initial_cpose->y << ",\"clearanceX\":" << clearance_goal_x
+             << ",\"clearanceY\":" << clearance_goal_y << ",\"homeDist\":" << start_home_dist
+             << ",\"flagDist\":" << start_flag_dist << ",\"clearanceDist\":"
+             << start_clearance_dist << ",\"clearanceM\":" << cfg_.chase_flag_clearance
              << ",\"carrierMbState\":\"" << carrier.moveBaseStateText() << "\"}";
         agentDebugLog("ctf_coordinator_node.cpp:runChasePhase",
-                      "carrier home goal sent at chase start", "C", data.str());
+                      "carrier clearance goal sent at chase start", "G", data.str());
       }
       // #endregion
-      ROS_INFO("CTF CHASE START: %s -> base (%.2f, %.2f)",
-               carrier.ns().c_str(), carrier.home().x, carrier.home().y);
+      ROS_INFO(
+          "CTF CHASE START: %s -> clearance (%.2f, %.2f) then base (%.2f, %.2f); "
+          "flag dist=%.2f m clearance=%.2f m",
+          carrier.ns().c_str(), clearance_goal_x, clearance_goal_y, carrier.home().x,
+          carrier.home().y, start_flag_dist, cfg_.chase_flag_clearance);
+      last_carrier_progress_home_dist = start_home_dist;
+      last_carrier_progress_time = ros::Time::now();
 
-      const ros::Time pursuer_start_after =
-          ros::Time::now() + ros::Duration(1.0);
-      while (ros::ok() && ros::Time::now() < pursuer_start_after)
-      {
-        ros::spinOnce();
-        rate.sleep();
-      }
-
-      initial_cpose = carrier.poseInMap();
-      initial_ppose = pursuer.poseInMap();
-      if (initial_cpose && initial_ppose)
-      {
-        sendPursuerIntercept(*initial_cpose, *initial_ppose);
-        ROS_INFO("CTF CHASE START: %s -> intercept (%.2f, %.2f)",
-                 pursuer.ns().c_str(), last_intercept_x, last_intercept_y);
-      }
+      sendPursuerIntercept(*initial_cpose, *initial_ppose);
+      ROS_INFO("CTF CHASE START: %s -> intercept (%.2f, %.2f)",
+               pursuer.ns().c_str(), last_intercept_x, last_intercept_y);
     }
     else
     {
@@ -676,6 +739,43 @@ private:
         return 0;
       }
 
+      if (!carrier_on_home_goal)
+      {
+        const double clearance_dist = ctf_navigation::geometry::distance2D(
+            cpose->x, cpose->y, clearance_goal_x, clearance_goal_y);
+        if (clearance_dist <= cfg_.waypoint_reached_dist || carrier.moveBaseSucceeded())
+        {
+          carrier.sendGoal(carrier.home().x, carrier.home().y, carrier.home().yaw);
+          carrier_on_home_goal = true;
+          last_carrier_progress_time = ros::Time::now();
+          last_carrier_progress_home_dist = carrier_home_dist;
+          // #region agent log
+          {
+            std::ostringstream data;
+            data << "{\"carrierNs\":\"" << carrier.ns() << "\",\"homeDist\":" << carrier_home_dist
+                 << ",\"clearanceDist\":" << clearance_dist << ",\"carrierMbState\":\""
+                 << carrier.moveBaseStateText() << "\"}";
+            agentDebugLog("ctf_coordinator_node.cpp:runChasePhase",
+                          "carrier switched to home goal after clearance", "G", data.str());
+          }
+          // #endregion
+          ROS_INFO("CTF CHASE: %s reached clearance; continuing to base", carrier.ns().c_str());
+        }
+      }
+
+      const auto resendCarrierGoal = [&]() {
+        if (carrier_on_home_goal)
+        {
+          carrier.sendGoal(carrier.home().x, carrier.home().y, carrier.home().yaw);
+        }
+        else
+        {
+          carrier.sendGoal(clearance_goal_x, clearance_goal_y,
+                           std::atan2(carrier.home().y - clearance_goal_y,
+                                      carrier.home().x - clearance_goal_x));
+        }
+      };
+
       if (carrier.moveBaseTerminal() && !carrier.moveBaseSucceeded())
       {
         const ros::Time now = ros::Time::now();
@@ -683,8 +783,10 @@ private:
             cfg_.carrier_home_resend_cooldown - (now - last_carrier_home_resend).toSec();
         if ((now - last_carrier_home_resend).toSec() >= cfg_.carrier_home_resend_cooldown)
         {
-          carrier.sendGoal(carrier.home().x, carrier.home().y, carrier.home().yaw);
+          resendCarrierGoal();
           last_carrier_home_resend = now;
+          last_carrier_progress_time = now;
+          last_carrier_progress_home_dist = carrier_home_dist;
           // #region agent log
           {
             std::ostringstream data;
@@ -711,6 +813,41 @@ private:
           // #endregion
         }
       }
+      else if (!carrier.moveBaseTerminal())
+      {
+        const ros::Time now = ros::Time::now();
+        if (last_carrier_progress_home_dist < 0.0 ||
+            last_carrier_progress_home_dist - carrier_home_dist >=
+                cfg_.carrier_home_progress_threshold)
+        {
+          last_carrier_progress_home_dist = carrier_home_dist;
+          last_carrier_progress_time = now;
+        }
+
+        const double stuck_for_sec = (now - last_carrier_progress_time).toSec();
+        if (stuck_for_sec >= cfg_.carrier_home_stuck_timeout &&
+            (now - last_carrier_home_resend).toSec() >= cfg_.carrier_home_resend_cooldown)
+        {
+          resendCarrierGoal();
+          last_carrier_home_resend = now;
+          last_carrier_progress_time = now;
+          last_carrier_progress_home_dist = carrier_home_dist;
+          // #region agent log
+          {
+            std::ostringstream data;
+            data << "{\"carrierNs\":\"" << carrier.ns() << "\",\"homeDist\":" << carrier_home_dist
+                 << ",\"stuckForSec\":" << stuck_for_sec << ",\"onHomeGoal\":"
+                 << (carrier_on_home_goal ? "true" : "false") << ",\"carrierMbState\":\""
+                 << carrier.moveBaseStateText() << "\"}";
+            agentDebugLog("ctf_coordinator_node.cpp:runChasePhase",
+                          "carrier stuck recovery: resend current chase goal", "F",
+                          data.str());
+          }
+          // #endregion
+          ROS_WARN("CTF CHASE: %s stuck ACTIVE for %.1f s at home dist %.2f m; re-sending goal",
+                   carrier.ns().c_str(), stuck_for_sec, carrier_home_dist);
+        }
+      }
 
       if ((ros::Time::now() - last_carrier_debug_log).toSec() >= 2.0)
       {
@@ -731,6 +868,7 @@ private:
                << carrier.moveBaseStateText() << "\",\"pursuerMbState\":\""
                << pursuer.moveBaseStateText() << "\",\"directChase\":"
                << (d <= cfg_.intercept_direct_chase_distance ? "true" : "false")
+               << ",\"onHomeGoal\":" << (carrier_on_home_goal ? "true" : "false")
                << ",\"stuckTicks\":" << carrier_stuck_ticks << "}";
           agentDebugLog("ctf_coordinator_node.cpp:runChasePhase", "carrier chase tick", "A",
                         data.str());
@@ -942,6 +1080,7 @@ CoordinatorConfig loadConfig(ros::NodeHandle& pnh)
             cfg.flag_capture_distance);
   pnh.param("flag_standoff_distance", cfg.flag_standoff_distance,
             cfg.flag_standoff_distance);
+  pnh.param("chase_flag_clearance", cfg.chase_flag_clearance, cfg.chase_flag_clearance);
   pnh.param("capture_pause_sec", cfg.capture_pause_sec, cfg.capture_pause_sec);
   pnh.param("catch_distance", cfg.catch_distance, cfg.catch_distance);
   pnh.param("flag_memory_timeout", cfg.flag_memory_timeout, cfg.flag_memory_timeout);
@@ -964,6 +1103,10 @@ CoordinatorConfig loadConfig(ros::NodeHandle& pnh)
             cfg.intercept_carrier_move_threshold);
   pnh.param("carrier_home_resend_cooldown", cfg.carrier_home_resend_cooldown,
             cfg.carrier_home_resend_cooldown);
+  pnh.param("carrier_home_stuck_timeout", cfg.carrier_home_stuck_timeout,
+            cfg.carrier_home_stuck_timeout);
+  pnh.param("carrier_home_progress_threshold", cfg.carrier_home_progress_threshold,
+            cfg.carrier_home_progress_threshold);
   pnh.param("direct_chase_refresh_sec", cfg.direct_chase_refresh_sec,
             cfg.direct_chase_refresh_sec);
   pnh.param("direct_chase_carrier_move", cfg.direct_chase_carrier_move,
