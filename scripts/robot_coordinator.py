@@ -11,7 +11,7 @@ import rospy
 import tf2_ros
 from sensor_msgs.msg import PointCloud2, PointField
 from geometry_msgs.msg import Twist
-from std_msgs.msg import Header
+from std_msgs.msg import Header, Bool
 
 ROBOT_RADIUS = 0.28
 NUM_ANGLES   = 20
@@ -92,6 +92,7 @@ class RobotCoordinator:
 
         # State variable: None (both free), 'robot1' (robot1 yields), or 'robot2' (robot2 yields)
         self.yielding_robot = None
+        self.flag_captured = False
 
         # Cached raw cmd_vel commands
         self.raw_cmd1 = Twist()
@@ -100,8 +101,14 @@ class RobotCoordinator:
         # Subscribers to cmd_vel_raw
         self.cmd_sub1 = rospy.Subscriber('/robot1/cmd_vel_raw', Twist, self.cmd_cb1, queue_size=1)
         self.cmd_sub2 = rospy.Subscriber('/robot2/cmd_vel_raw', Twist, self.cmd_cb2, queue_size=1)
+        self.flag_captured_sub = rospy.Subscriber('/ctf/flag_captured', Bool, self.flag_captured_cb, queue_size=1)
 
         rospy.loginfo('RobotCoordinator: initialized. Priority: robot1 > robot2')
+
+    def flag_captured_cb(self, msg):
+        self.flag_captured = msg.data
+        if self.flag_captured:
+            self.yielding_robot = None
 
     def cmd_cb1(self, msg):
         self.raw_cmd1 = msg
@@ -144,7 +151,7 @@ class RobotCoordinator:
                 dist = math.hypot(p1[0] - p2[0], p1[1] - p2[1])
 
             # Priority yielding state machine
-            if dist is not None:
+            if dist is not None and not self.flag_captured:
                 if self.yielding_robot is None:
                     if dist < YIELD_DISTANCE:
                         self.yielding_robot = 'robot2' # robot2 yields to robot1
@@ -153,6 +160,8 @@ class RobotCoordinator:
                     if dist > RESUME_DISTANCE:
                         rospy.loginfo(f'Robots separated ({dist:.2f}m). robot2 RESUMES exploration.')
                         self.yielding_robot = None
+            elif self.flag_captured:
+                self.yielding_robot = None
 
             # Publish zero velocity overrides for yielding robot to keep it still
             if self.yielding_robot == 'robot1':
@@ -162,7 +171,7 @@ class RobotCoordinator:
 
             # Publish PointCloud2 footprints for local costmaps
             for source_ns, pub in pairs:
-                if dist is None or dist > self.max_avoid_dist:
+                if dist is None or dist > self.max_avoid_dist or self.flag_captured:
                     pub.publish(_empty_cloud(self.target_frame))
                     continue
                 pos = poses.get(source_ns)

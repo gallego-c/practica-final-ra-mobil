@@ -1,7 +1,7 @@
 global_frame: odom
 robot_base_frame: base_footprint
-update_frequency:  15.0
-publish_frequency:  8.0
+update_frequency:  8.0
+publish_frequency:  4.0
 static_map: false
 rolling_window: true
 width:  4.5
@@ -14,5 +14,5 @@ plugins:
 
 # Same local safety envelope as the known-map visio flow.
 inflation_layer:
-  inflation_radius:    0.30
+  inflation_radius:    0.40
   cost_scaling_factor: 8.0
