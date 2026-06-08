@@ -7,6 +7,7 @@ rolling_window: false
 transform_tolerance: 1.0
 plugins:
   - {name: static_layer, type: "costmap_2d::StaticLayer"}
+  - {name: obstacle_layer, type: "costmap_2d::ObstacleLayer"}
   - {name: inflation_layer, type: "costmap_2d::InflationLayer"}
 
 static_layer:
@@ -15,6 +16,11 @@ static_layer:
   track_unknown_space: true
   unknown_cost_value: 255
   trinary_costmap: true
+
+# The obstacle_layer config (scan + other_robot sources) is loaded from
+# costmap_common_slam.yaml. Adding the obstacle_layer here lets the global
+# planner see dynamic obstacles (the flag, the other robot, moved furniture)
+# that are not yet in the static SLAM map.
 
 inflation_layer:
   inflation_radius: 0.35

@@ -11,11 +11,13 @@ scan_topic:   "scan"
 base_frame: "base_footprint"
 map_frame:  "map"
 
-# FOV horizontal cámara Waffle Pi en Gazebo (rad, ~80°).
-horizontal_fov: 1.3962634
+# FOV horizontal cámara Waffle Pi en Gazebo (rad, ~62.2°).
+# Valor real del modelo turtlebot3_waffle_pi.urdf.xacro.
+horizontal_fov: 1.085595
 
 # Área mínima del blob rojo (en px) para dar la bandera por "vista".
-min_blob_area: 80
+# Subido de 80 → 150 para evitar micro-detecciones de ruido.
+min_blob_area: 150
 
 # Distancia máxima (m) a la que se confía en la estimación por LIDAR.
 max_detection_distance: 5.0
@@ -23,18 +25,19 @@ max_detection_distance: 5.0
 # Ventana angular (rad) alrededor del bearing donde se busca el eco láser.
 range_window: 0.25
 
-# Umbrales HSV (Gazebo suele desaturar el rojo; valores permisivos).
+# Umbrales HSV — la bandera Gazebo/Red es rojo saturado puro (H≈0/180, S=255, V=255).
+# Valores ajustados para evitar falsos positivos en suelo/paredes.
 h_low1: 0
 h_high1: 15
 h_low2: 165
 h_high2: 180
-s_min: 60
-v_min: 40
+s_min: 100
+v_min: 60
 
-# Fallback RGB: util cuando Gazebo o la camara cambian la saturacion/hue del rojo.
+# Fallback RGB: la bandera Gazebo tiene R≈255, G≈13, B≈13.
 use_rgb_fallback: true
-rgb_red_min: 70
-rgb_red_dominance: 1.18
+rgb_red_min: 100
+rgb_red_dominance: 1.3
 
 # Publicar imagen de depuración (~debug_image) con la detección dibujada.
 publish_debug: true

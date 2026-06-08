@@ -22,6 +22,8 @@ MAX_AVOID_DISTANCE = 3.5
 # Priority distance thresholds
 YIELD_DISTANCE = 1.5      # Distance at which robot2 yields to robot1
 RESUME_DISTANCE = 1.8     # Distance at which robot2 is allowed to resume
+YIELD_TIMEOUT = 5.0       # Max seconds to yield before releasing (prevents deadlocks)
+YIELD_COOLDOWN = 5.0      # Seconds to wait after a timeout before yielding again
 
 def _empty_cloud(frame_id: str) -> PointCloud2:
     cloud = PointCloud2()
@@ -92,6 +94,8 @@ class RobotCoordinator:
 
         # State variable: None (both free), 'robot1' (robot1 yields), or 'robot2' (robot2 yields)
         self.yielding_robot = None
+        self.yield_start_time = None
+        self.yield_cooldown_until = None
         self.flag_captured = False
 
         # Cached raw cmd_vel commands
@@ -111,8 +115,10 @@ class RobotCoordinator:
             self.yielding_robot = None
 
     def _yield_twist(self, ns):
+        """Back away and turn slightly instead of just spinning in place."""
         twist = Twist()
-        twist.angular.z = -0.65 if ns == 'robot1' else 0.65
+        twist.linear.x = -0.10  # back up slowly
+        twist.angular.z = -0.4 if ns == 'robot1' else 0.4
         return twist
 
     def cmd_cb1(self, msg):
@@ -158,15 +164,26 @@ class RobotCoordinator:
             # Priority yielding state machine
             if dist is not None and not self.flag_captured:
                 if self.yielding_robot is None:
-                    if dist < YIELD_DISTANCE:
+                    # Only yield if we are not in a cooldown period
+                    in_cooldown = self.yield_cooldown_until and rospy.Time.now() < self.yield_cooldown_until
+                    if dist < YIELD_DISTANCE and not in_cooldown:
                         self.yielding_robot = 'robot2' # robot2 yields to robot1
+                        self.yield_start_time = rospy.Time.now()
                         rospy.logwarn(f'Robots too close ({dist:.2f}m). robot2 YIELDS to robot1.')
                 else:
-                    if dist > RESUME_DISTANCE:
-                        rospy.loginfo(f'Robots separated ({dist:.2f}m). robot2 RESUMES exploration.')
+                    yield_elapsed = (rospy.Time.now() - self.yield_start_time).to_sec() if self.yield_start_time else 0.0
+                    if dist > RESUME_DISTANCE or yield_elapsed > YIELD_TIMEOUT:
+                        is_timeout = dist <= RESUME_DISTANCE
+                        reason = f'timeout ({yield_elapsed:.1f}s)' if is_timeout else 'separated'
+                        rospy.loginfo(f'robot2 RESUMES ({reason}, dist={dist:.2f}m).')
                         self.yielding_robot = None
+                        self.yield_start_time = None
+                        if is_timeout:
+                            self.yield_cooldown_until = rospy.Time.now() + rospy.Duration(YIELD_COOLDOWN)
+                            rospy.logwarn(f'Entering yield cooldown for {YIELD_COOLDOWN}s')
             elif self.flag_captured:
                 self.yielding_robot = None
+                self.yield_start_time = None
 
             # Yielding robot spins in place so it can clear narrow passages
             if self.yielding_robot == 'robot1':
