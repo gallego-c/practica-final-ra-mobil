@@ -110,19 +110,24 @@ class RobotCoordinator:
         if self.flag_captured:
             self.yielding_robot = None
 
+    def _yield_twist(self, ns):
+        twist = Twist()
+        twist.angular.z = -0.65 if ns == 'robot1' else 0.65
+        return twist
+
     def cmd_cb1(self, msg):
         self.raw_cmd1 = msg
         if self.yielding_robot != 'robot1':
             self.cmd_pub1.publish(msg)
         else:
-            self.cmd_pub1.publish(Twist()) # Stop command
+            self.cmd_pub1.publish(self._yield_twist('robot1'))
 
     def cmd_cb2(self, msg):
         self.raw_cmd2 = msg
         if self.yielding_robot != 'robot2':
             self.cmd_pub2.publish(msg)
         else:
-            self.cmd_pub2.publish(Twist()) # Stop command
+            self.cmd_pub2.publish(self._yield_twist('robot2'))
 
     def run(self):
         rate = rospy.Rate(PUBLISH_HZ)
@@ -163,11 +168,11 @@ class RobotCoordinator:
             elif self.flag_captured:
                 self.yielding_robot = None
 
-            # Publish zero velocity overrides for yielding robot to keep it still
+            # Yielding robot spins in place so it can clear narrow passages
             if self.yielding_robot == 'robot1':
-                self.cmd_pub1.publish(Twist())
+                self.cmd_pub1.publish(self._yield_twist('robot1'))
             elif self.yielding_robot == 'robot2':
-                self.cmd_pub2.publish(Twist())
+                self.cmd_pub2.publish(self._yield_twist('robot2'))
 
             # Publish PointCloud2 footprints for local costmaps
             for source_ns, pub in pairs:

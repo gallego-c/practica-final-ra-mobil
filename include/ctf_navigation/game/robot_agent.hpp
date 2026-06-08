@@ -49,7 +49,6 @@ public:
 
   bool moveBaseSucceeded() const;
   bool moveBaseTerminal() const;
-  std::string moveBaseStateText() const;
 
   // Visión
   bool flagSeen() const { return flag_seen_; }

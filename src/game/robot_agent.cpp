@@ -58,11 +58,6 @@ bool RobotAgent::moveBaseTerminal() const
   return move_base_.isTerminal();
 }
 
-std::string RobotAgent::moveBaseStateText() const
-{
-  return move_base_.stateText();
-}
-
 bool RobotAgent::hasFreshFlagEstimate(double timeout_sec) const
 {
   if (!flag_estimate_)

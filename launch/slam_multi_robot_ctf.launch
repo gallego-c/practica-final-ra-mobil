@@ -2,6 +2,7 @@
   <arg name="local_planner" default="dwa"/>
   <arg name="world_frame" default="map"/>
   <arg name="merged_map_topic" default="/merged_map"/>
+  <arg name="rviz" default="true"/>
 
   <!-- Spawning initial poses in Gazebo world -->
   <arg name="robot1_x" default="-3.0"/>
@@ -93,8 +94,13 @@
     <param name="exploration_timeout" value="300.0"/>
     <param name="goal_timeout" value="45.0"/>
     <param name="min_coverage" value="0.72"/>
-    <param name="gain_scale" value="2.5"/>
-    <param name="min_goal_clearance" value="0.15"/>
+    <param name="gain_scale" value="1.6"/>
+    <param name="voronoi_margin" value="0.60"/>
+    <param name="separation_weight" value="2.5"/>
+    <param name="flag_bias_weight" value="0.8"/>
+    <param name="territory_penalty" value="4.0"/>
+    <param name="frontier_claim_sec" value="50.0"/>
+    <param name="min_goal_clearance" value="0.25"/>
     <param name="progress_timeout" value="15.0"/>
     <param name="min_progress_distance" value="0.15"/>
     <param name="startup_delay" value="12.0"/>
@@ -102,15 +108,34 @@
     <param name="idle_frontier_cycles" value="12"/>
 
     <!-- CTF parameters -->
-    <param name="flag_capture_distance" value="0.60"/>
+    <param name="flag_capture_distance" value="0.40"/>
     <param name="flag_standoff_distance" value="0.20"/>
+    <param name="chase_flag_clearance" value="0.75"/>
+    <param name="chase_clearance_reached_dist" value="0.20"/>
+    <param name="chase_clearance_min_travel" value="0.25"/>
     <param name="catch_distance" value="0.65"/>
     <param name="chase_goal_period" value="1.0"/>
-    <param name="capture_pause_sec" value="1.5"/>
+    <param name="capture_pause_sec" value="3.0"/>
     <param name="flag_memory_timeout" value="5.0"/>
+    <param name="waypoint_reached_dist" value="0.55"/>
+    <param name="intercept_enabled" value="true"/>
+    <param name="intercept_direct_chase_distance" value="1.25"/>
+    <param name="intercept_carrier_move_threshold" value="1.25"/>
+    <param name="carrier_home_resend_cooldown" value="3.0"/>
+    <param name="carrier_home_stuck_timeout" value="6.0"/>
+    <param name="carrier_home_progress_threshold" value="0.10"/>
+    <param name="direct_chase_refresh_sec" value="2.0"/>
+    <param name="direct_chase_carrier_move" value="0.25"/>
+    <param name="intercept_arrival_margin" value="0.30"/>
+    <param name="intercept_step" value="0.25"/>
+    <param name="intercept_min_lead" value="1.0"/>
 
     <!-- Home coordinates -->
     <rosparam param="robot1_home">[-3.0, -3.0, 0.0]</rosparam>
     <rosparam param="robot2_home">[3.0, 3.0, 3.1416]</rosparam>
   </node>
+
+  <!-- 7. RViz: merged SLAM map, per-robot costmaps, and navigation plans -->
+  <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz"
+        args="-d $(find ctf_navigation)/rviz/slam_multi_robot_ctf.rviz"/>
 </launch>
