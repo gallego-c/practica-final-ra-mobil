@@ -4,17 +4,20 @@
   <arg name="merged_map_topic" default="/merged_map"/>
   <arg name="rviz" default="true"/>
 
-  <!-- Spawning initial poses in Gazebo world -->
-  <arg name="robot1_x" default="-3.0"/>
-  <arg name="robot1_y" default="-3.0"/>
+  <!-- world: ctf_world | nine_rooms_world | hallway_world | hallway_obstacles_world -->
+  <arg name="world" default="ctf_world"/>
+
+  <!-- Spawning initial poses in Gazebo (defaults depend on world; see simulation.launch) -->
+  <arg name="robot1_x" default="$(eval -3.5 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else -3.0)"/>
+  <arg name="robot1_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else -3.0)"/>
   <arg name="robot1_yaw" default="0.0"/>
-  <arg name="robot2_x" default="3.0"/>
-  <arg name="robot2_y" default="3.0"/>
+  <arg name="robot2_x" default="$(eval 3.5 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else 3.0)"/>
+  <arg name="robot2_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else 3.0)"/>
   <arg name="robot2_yaw" default="3.1416"/>
 
   <!-- Posición de la bandera (red flag) -->
-  <arg name="flag_x" default="-3.2"/>
-  <arg name="flag_y" default="3.2"/>
+  <arg name="flag_x" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world', 'nine_rooms_world'] else -3.2)"/>
+  <arg name="flag_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world', 'nine_rooms_world'] else 3.2)"/>
 
   <!-- Initial alignment map offset for multirobot_map_merge -->
   <arg name="robot1_map_init_x" default="0.0"/>
@@ -24,8 +27,9 @@
   <arg name="robot2_map_init_y" default="0.0"/>
   <arg name="robot2_map_init_yaw" default="0.0"/>
 
-  <!-- 1. Gazebo Simulation with the CTF world, spawns robot1, robot2 and the flag -->
+  <!-- 1. Gazebo simulation: spawns robot1, robot2 and the flag -->
   <include file="$(find ctf_navigation)/launch/simulation.launch">
+    <arg name="world" value="$(arg world)"/>
     <arg name="robot1_x" value="$(arg robot1_x)"/>
     <arg name="robot1_y" value="$(arg robot1_y)"/>
     <arg name="robot1_yaw" value="$(arg robot1_yaw)"/>
@@ -133,9 +137,9 @@
     <param name="intercept_step" value="0.25"/>
     <param name="intercept_min_lead" value="1.0"/>
 
-    <!-- Home coordinates -->
-    <rosparam param="robot1_home">[-3.0, -3.0, 0.0]</rosparam>
-    <rosparam param="robot2_home">[3.0, 3.0, 3.1416]</rosparam>
+    <!-- Home coordinates (match Gazebo spawn poses) -->
+    <rosparam param="robot1_home" subst_value="True">[$(arg robot1_x), $(arg robot1_y), $(arg robot1_yaw)]</rosparam>
+    <rosparam param="robot2_home" subst_value="True">[$(arg robot2_x), $(arg robot2_y), $(arg robot2_yaw)]</rosparam>
   </node>
 
   <!-- 7. RViz: merged SLAM map, per-robot costmaps, and navigation plans -->

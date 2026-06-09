@@ -4,16 +4,19 @@
   <arg name="run_ctf" default="true"/>
   <arg name="world_frame" default="map"/>
   <arg name="merged_map_topic" default="/merged_map"/>
-  <arg name="flag_x" default="-3.2"/>
-  <arg name="flag_y" default="3.2"/>
   <arg name="rviz" default="true"/>
 
-  <arg name="robot1_x" default="-3.0"/>
-  <arg name="robot1_y" default="-3.0"/>
+  <!-- world: ctf_world | nine_rooms_world | hallway_world | hallway_obstacles_world -->
+  <arg name="world" default="ctf_world"/>
+
+  <arg name="robot1_x" default="$(eval -3.5 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else -3.0)"/>
+  <arg name="robot1_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else -3.0)"/>
   <arg name="robot1_yaw" default="0.0"/>
-  <arg name="robot2_x" default="3.0"/>
-  <arg name="robot2_y" default="3.0"/>
+  <arg name="robot2_x" default="$(eval 3.5 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else 3.0)"/>
+  <arg name="robot2_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else 3.0)"/>
   <arg name="robot2_yaw" default="3.1416"/>
+  <arg name="flag_x" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world', 'nine_rooms_world'] else -3.2)"/>
+  <arg name="flag_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world', 'nine_rooms_world'] else 3.2)"/>
 
   <arg name="robot1_map_init_x" default="0.0"/>
   <arg name="robot1_map_init_y" default="0.0"/>
@@ -23,6 +26,7 @@
   <arg name="robot2_map_init_yaw" default="0.0"/>
 
   <include file="$(find ctf_navigation)/launch/simulation.launch">
+    <arg name="world" value="$(arg world)"/>
     <arg name="robot1_x" value="$(arg robot1_x)"/>
     <arg name="robot1_y" value="$(arg robot1_y)"/>
     <arg name="robot1_yaw" value="$(arg robot1_yaw)"/>

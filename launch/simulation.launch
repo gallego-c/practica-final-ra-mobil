@@ -10,8 +10,14 @@
 
   <!-- Posición de la bandera. Cámbiala para hacer pruebas:
        roslaunch ctf_navigation ctf_game.launch flag_x:=2.0 flag_y:=-3.0 -->
-  <arg name="flag_x" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else -3.2)"/>
-  <arg name="flag_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else 3.2)"/>
+  <arg name="flag_x" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world', 'nine_rooms_world'] else -3.2)"/>
+  <arg name="flag_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world', 'nine_rooms_world'] else 3.2)"/>
+
+  <!-- Published for multi-robot coordinators (see /ctf_navigation/spawns). -->
+  <rosparam param="/ctf_navigation/spawns/robot1" subst_value="True">[$(arg robot1_x), $(arg robot1_y), $(arg robot1_yaw)]</rosparam>
+  <rosparam param="/ctf_navigation/spawns/robot2" subst_value="True">[$(arg robot2_x), $(arg robot2_y), $(arg robot2_yaw)]</rosparam>
+  <rosparam param="/ctf_navigation/spawns/flag" subst_value="True">[$(arg flag_x), $(arg flag_y)]</rosparam>
+  <param name="/ctf_navigation/world" value="$(arg world)"/>
 
   <!-- Keep Gazebo transport discovery local. This avoids intermittent WSL
        discovery failures when Gazebo advertises internal topics such as
