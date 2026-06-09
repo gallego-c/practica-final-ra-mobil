@@ -6,7 +6,6 @@
        ctf_game.launch.
        ========================================================================== -->
 
-  <arg name="local_planner" default="dwa"/>
   <arg name="localization" default="static"/>
   <arg name="run_demo" default="true"/>
 
@@ -39,7 +38,6 @@
         name="robot_obstacle_publisher" output="screen"/>
 
   <include file="$(find ctf_navigation)/launch/navigation.launch">
-    <arg name="local_planner" value="$(arg local_planner)"/>
     <arg name="localization" value="$(arg localization)"/>
   </include>
 

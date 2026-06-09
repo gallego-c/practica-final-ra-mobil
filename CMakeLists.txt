@@ -6,14 +6,11 @@ add_compile_options(-std=c++11)
 find_package(catkin REQUIRED COMPONENTS
   actionlib
   actionlib_msgs
-  base_local_planner
   costmap_2d
   cv_bridge
   geometry_msgs
   move_base_msgs
-  nav_core
   nav_msgs
-  pluginlib
   roscpp
   sensor_msgs
   std_msgs
@@ -26,18 +23,14 @@ find_package(OpenCV REQUIRED)
 
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES ctf_navigation
   CATKIN_DEPENDS
     actionlib
     actionlib_msgs
-    base_local_planner
     costmap_2d
     cv_bridge
     geometry_msgs
     move_base_msgs
-    nav_core
     nav_msgs
-    pluginlib
     roscpp
     sensor_msgs
     std_msgs
@@ -51,10 +44,6 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
 )
-
-# ── Librería del planificador local 5D (plugin move_base) ─────────────────────
-add_library(ctf_navigation src/planner_5d.cpp)
-target_link_libraries(ctf_navigation ${catkin_LIBRARIES})
 
 # ── Librería de visión (detección roja) ───────────────────────────────────────
 add_library(ctf_vision src/vision/red_flag_detector.cpp)
@@ -82,7 +71,6 @@ target_link_libraries(robot_obstacle_publisher_node ${catkin_LIBRARIES})
 
 # ── Instalación ───────────────────────────────────────────────────────────────
 install(TARGETS
-  ctf_navigation
   ctf_vision
   ctf_game
   ctf_demo_node
@@ -97,10 +85,6 @@ install(TARGETS
 install(DIRECTORY include/${PROJECT_NAME}/
   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
   FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
-)
-
-install(FILES planner_5d_plugin.xml
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
 
 install(DIRECTORY launch params rviz worlds models maps

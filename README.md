@@ -25,7 +25,6 @@ ctf_navigation/
 │   │   ├── types.hpp
 │   │   ├── exploration.hpp
 │   │   └── robot_agent.hpp
-│   └── planner_5d.h     # Plugin local move_base
 ├── src/
 │   ├── nodes/           # Ejecutables ROS
 │   │   ├── ctf_coordinator_node.cpp   # Juego realista
@@ -33,8 +32,7 @@ ctf_navigation/
 │   │   ├── flag_detector_node.cpp     # Visión + LIDAR
 │   │   └── robot_obstacle_publisher_node.cpp
 │   ├── game/
-│   ├── vision/
-│   └── planner_5d.cpp
+│   └── vision/
 ├── launch/
 │   ├── ctf_game.launch      # ← Juego completo
 │   ├── ctf_demo.launch      # Modo oráculo (pruebas planner)
@@ -101,7 +99,8 @@ sudo apt install \
 
 2) Build:
 ```bash
-roslaunch ctf_navigation ctf_game.launch local_planner:=5d
+cd ~/catkin_ws && catkin_make && source devel/setup.bash
+roslaunch ctf_navigation ctf_game.launch
 ```
 
 ### Modo oráculo (solo probar planning motion)
@@ -125,7 +124,7 @@ SLAM demo — maximize map coverage, then optional CTF:
 roslaunch ctf_navigation slam_demo.launch run_ctf:=false
 
 # Exploration + CTF after ~72% map coverage:
-roslaunch ctf_navigation slam_demo.launch local_planner:=5d run_demo:=true
+roslaunch ctf_navigation slam_demo.launch run_demo:=true
 ```
 
 Exploration stops when coverage ≥ 72% or no frontiers remain (up to 5 min).

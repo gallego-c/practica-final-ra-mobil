@@ -1,6 +1,5 @@
 <launch>
   <arg name="map_file" default="$(find ctf_navigation)/maps/ctf_map.yaml"/>
-  <arg name="local_planner" default="dwa"/>
   <arg name="localization" default="static"/>
 
   <node pkg="map_server" type="map_server" name="map_server" args="$(arg map_file)"/>
@@ -70,15 +69,8 @@
       <param name="base_global_planner" value="global_planner/GlobalPlanner"/>
       <rosparam file="$(find ctf_navigation)/params/planner_global.yaml"
                 command="load" ns="GlobalPlanner"/>
-      <param if="$(eval arg('local_planner') == '5d')"
-             name="base_local_planner" value="ctf_navigation/Planner5D"/>
-      <rosparam if="$(eval arg('local_planner') == '5d')"
-                file="$(find ctf_navigation)/params/planner_local_5d.yaml"
-                command="load" ns="Planner5D"/>
-      <param unless="$(eval arg('local_planner') == '5d')"
-             name="base_local_planner" value="dwa_local_planner/DWAPlannerROS"/>
-      <rosparam unless="$(eval arg('local_planner') == '5d')"
-                file="$(find ctf_navigation)/params/planner_local_dwa.yaml"
+      <param name="base_local_planner" value="dwa_local_planner/DWAPlannerROS"/>
+      <rosparam file="$(find ctf_navigation)/params/planner_local_dwa.yaml"
                 command="load" ns="DWAPlannerROS"/>
     </node>
   </group>
@@ -135,15 +127,8 @@
       <param name="base_global_planner" value="global_planner/GlobalPlanner"/>
       <rosparam file="$(find ctf_navigation)/params/planner_global.yaml"
                 command="load" ns="GlobalPlanner"/>
-      <param if="$(eval arg('local_planner') == '5d')"
-             name="base_local_planner" value="ctf_navigation/Planner5D"/>
-      <rosparam if="$(eval arg('local_planner') == '5d')"
-                file="$(find ctf_navigation)/params/planner_local_5d.yaml"
-                command="load" ns="Planner5D"/>
-      <param unless="$(eval arg('local_planner') == '5d')"
-             name="base_local_planner" value="dwa_local_planner/DWAPlannerROS"/>
-      <rosparam unless="$(eval arg('local_planner') == '5d')"
-                file="$(find ctf_navigation)/params/planner_local_dwa.yaml"
+      <param name="base_local_planner" value="dwa_local_planner/DWAPlannerROS"/>
+      <rosparam file="$(find ctf_navigation)/params/planner_local_dwa.yaml"
                 command="load" ns="DWAPlannerROS"/>
     </node>
   </group>

@@ -1,5 +1,4 @@
 <launch>
-  <arg name="local_planner" default="dwa"/>
   <arg name="world_frame" default="map"/>
   <arg name="merged_map_topic" default="/merged_map"/>
   <arg name="rviz" default="true"/>
@@ -62,7 +61,6 @@
 
   <!-- 4. Navigation (move_base) for both robots on the /merged_map -->
   <include file="$(find ctf_navigation)/launch/slam_navigation.launch">
-    <arg name="local_planner" value="$(arg local_planner)"/>
     <arg name="world_frame" value="$(arg world_frame)"/>
     <arg name="merged_map_topic" value="$(arg merged_map_topic)"/>
   </include>
@@ -114,9 +112,21 @@
     <param name="move_base_timeout" value="120.0"/>
     <param name="idle_frontier_cycles" value="6"/>
 
-    <!-- CTF: capture = standoff + min_goal_clearance + flag_capture_margin (default 0.45 m) -->
+    <!-- CTF: standoff must account for flag cylinder (r=0.12) + costmap inflation -->
+    <param name="flag_collision_radius" value="0.12"/>
     <param name="flag_standoff_distance" value="0.20"/>
-    <param name="flag_capture_margin" value="0.10"/>
+    <param name="flag_capture_margin" value="0.08"/>
+    <param name="flag_capture_distance" value="0.45"/>
+    <param name="flag_capture_min_pursuit_sec" value="4.0"/>
+    <param name="flag_capture_min_progress" value="0.20"/>
+    <param name="flag_approach_stall_sec" value="5.0"/>
+    <param name="flag_approach_nudge_sec" value="3.0"/>
+    <param name="flag_approach_max_distance" value="0.85"/>
+    <param name="flag_approach_step" value="1.20"/>
+    <param name="flag_approach_backoff_max" value="1.10"/>
+    <param name="flag_approach_flank_step" value="0.55"/>
+    <param name="flag_approach_detour_step" value="1.00"/>
+    <param name="flag_approach_detour_after" value="3"/>
     <param name="chase_flag_clearance" value="0.75"/>
     <param name="chase_clearance_reached_dist" value="0.20"/>
     <param name="chase_clearance_min_travel" value="0.25"/>

@@ -6,10 +6,8 @@
        Uso:
          roslaunch ctf_navigation ctf_game.launch
          roslaunch ctf_navigation ctf_game.launch flag_x:=2.0 flag_y:=-3.0
-         roslaunch ctf_navigation ctf_game.launch local_planner:=5d
        ========================================================================== -->
 
-  <arg name="local_planner" default="dwa"/>
   <arg name="localization"  default="static"/>
   <arg name="rviz"          default="true"/>
 
@@ -43,7 +41,6 @@
 
   <!-- ── Navegación (map_server + move_base por robot) ──────────────────────-->
   <include file="$(find ctf_navigation)/launch/navigation.launch">
-    <arg name="local_planner" value="$(arg local_planner)"/>
     <arg name="localization"  value="$(arg localization)"/>
   </include>
 

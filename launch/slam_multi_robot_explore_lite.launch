@@ -1,5 +1,4 @@
 <launch>
-  <arg name="local_planner" default="dwa"/>
   <arg name="world_frame" default="map"/>
   <arg name="merged_map_topic" default="/merged_map"/>
 
@@ -55,7 +54,6 @@
 
   <!-- 4. Navigation (move_base) for both robots on the /merged_map -->
   <include file="$(find ctf_navigation)/launch/slam_navigation.launch">
-    <arg name="local_planner" value="$(arg local_planner)"/>
     <arg name="world_frame" value="$(arg world_frame)"/>
     <arg name="merged_map_topic" value="$(arg merged_map_topic)"/>
   </include>

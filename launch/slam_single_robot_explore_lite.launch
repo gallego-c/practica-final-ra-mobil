@@ -1,6 +1,5 @@
 <launch>
   <arg name="world_frame" default="map"/>
-  <arg name="local_planner" default="dwa"/>
 
   <!-- 1. Gazebo Simulation with the CTF world -->
   <include file="$(find gazebo_ros)/launch/empty_world.launch">

@@ -204,13 +204,10 @@ private:
       scan = last_scan_;
     }
 
-    boost::optional<double> range = ctf_navigation::vision::minRangeAtBearing(
+    // Only use LIDAR hits near the camera bearing. A FOV-wide minimum range
+    // often picks a nearby wall and places the flag unrealistically close.
+    const boost::optional<double> range = ctf_navigation::vision::minRangeAtBearing(
         scan, bearing, cfg_.range_window);
-    if (!range)
-    {
-      const double half = 0.5 * cfg_.horizontal_fov;
-      range = ctf_navigation::vision::minRangeInAngleRange(scan, -half, half);
-    }
     if (!range || *range > cfg_.max_detection_distance)
     {
       return boost::none;
