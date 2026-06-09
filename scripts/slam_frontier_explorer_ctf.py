@@ -8,7 +8,9 @@ Combines:
 """
 from __future__ import division
 
+import json
 import math
+import os
 import threading
 import time
 
@@ -24,6 +26,28 @@ from visualization_msgs.msg import Marker, MarkerArray
 
 FREE_THRESH = 25
 NEIGHBORS_4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
+
+_DEBUG_LOG_PATH = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), '..', 'debug-a19ebb.log'))
+
+
+def _dbg(hypothesis_id, location, message, data=None, run_id='pre-fix'):
+    # #region agent log
+    try:
+        entry = {
+            'sessionId': 'a19ebb',
+            'hypothesisId': hypothesis_id,
+            'location': location,
+            'message': message,
+            'data': data or {},
+            'timestamp': int(time.time() * 1000),
+            'runId': run_id,
+        }
+        with open(_DEBUG_LOG_PATH, 'a') as f:
+            f.write(json.dumps(entry) + '\n')
+    except Exception:
+        pass
+    # #endregion
 
 
 
@@ -76,6 +100,7 @@ class SlamFrontierExplorerCtf:
         self.territory_penalty = float(rospy.get_param('~territory_penalty', 4.0))
         self.frontier_claim_sec = float(rospy.get_param('~frontier_claim_sec', 50.0))
         self.min_goal_clearance = float(rospy.get_param('~min_goal_clearance', 0.15))
+        self.robot_radius = float(rospy.get_param('~robot_radius', 0.28))
         self.progress_timeout = float(rospy.get_param('~progress_timeout', 15.0))
         self.min_progress_distance = float(rospy.get_param('~min_progress_distance', 0.15))
         self.startup_delay = float(rospy.get_param('~startup_delay', 30.0))
@@ -83,12 +108,20 @@ class SlamFrontierExplorerCtf:
         self.idle_frontier_cycles = int(rospy.get_param('~idle_frontier_cycles', 8))
 
         # CTF parameters
-        self.flag_capture_distance = float(rospy.get_param('~flag_capture_distance', 0.65))
-        self.flag_standoff_distance = float(rospy.get_param('~flag_standoff_distance', 0.35))
+        self.flag_standoff_distance = float(rospy.get_param('~flag_standoff_distance', 0.20))
+        self.flag_capture_margin = float(rospy.get_param('~flag_capture_margin', 0.10))
+        # Capture range: standoff (security) + clearance (maneuverability) + margin
+        if rospy.has_param('~flag_capture_distance'):
+            self.flag_capture_distance = float(rospy.get_param('~flag_capture_distance'))
+        else:
+            self.flag_capture_distance = (
+                self.flag_standoff_distance
+                + self.min_goal_clearance
+                + self.flag_capture_margin)
         self.catch_distance = float(rospy.get_param('~catch_distance', 0.65))
         self.chase_goal_period = float(rospy.get_param('~chase_goal_period', 1.0))
         self.capture_pause_sec = float(rospy.get_param('~capture_pause_sec', 3.0))
-        self.flag_memory_timeout = float(rospy.get_param('~flag_memory_timeout', 12.0))
+        self.flag_memory_timeout = float(rospy.get_param('~flag_memory_timeout', 5.0))
         self.waypoint_reached_dist = float(rospy.get_param('~waypoint_reached_dist', 0.55))
         self.chase_flag_clearance = float(rospy.get_param('~chase_flag_clearance', 0.75))
         self.chase_clearance_reached_dist = float(
@@ -143,17 +176,14 @@ class SlamFrontierExplorerCtf:
         self.last_known_flag_xy = None
         self.flag_lock = threading.Lock()
 
-        # Flag detection consistency: require N consistent estimates before
-        # accepting the flag position. This prevents false captures from a
-        # single frame false positive.
-        self._flag_consistent_count = {'robot1': 0, 'robot2': 0}
-        self._flag_consistency_threshold = int(rospy.get_param('~flag_consistency_threshold', 3))
-        self._flag_consistency_radius = float(rospy.get_param('~flag_consistency_radius', 1.5))
-        self._flag_approach_sent = {'robot1': False, 'robot2': False}
+        # Per-robot search sub-state during EXPLORING phase (matches C++ SearchState)
+        self._search_state = {'robot1': 'EXPLORING', 'robot2': 'EXPLORING'}
+        self._state_lock = threading.Lock()
 
         # Goal throttling
         self._last_flag_goal = {}
         self._last_flag_goal_time = {}
+        self._last_dbg_pursuit_log = {}
 
         # Robot homes
         self.homes = {
@@ -204,6 +234,23 @@ class SlamFrontierExplorerCtf:
 
         # Publish initial capture state (False)
         self._flag_captured_pub.publish(Bool(data=False))
+        # #region agent log
+        _dbg('D', 'slam_frontier_explorer_ctf.py:__init__',
+             'capture_distance_configured', {
+                 'flag_capture_distance': round(self.flag_capture_distance, 3),
+                 'flag_standoff_distance': self.flag_standoff_distance,
+                 'min_goal_clearance': self.min_goal_clearance,
+                 'flag_capture_margin': self.flag_capture_margin,
+                 'robot_radius': self.robot_radius,
+                 'maneuver_reach': round(
+                     self.flag_standoff_distance + self.min_goal_clearance, 3),
+             }, run_id='post-fix')
+        # #endregion
+        rospy.loginfo(
+            'SlamFrontierExplorerCtf: flag_capture_distance=%.2f m '
+            '(standoff=%.2f + clearance=%.2f + margin=%.2f)',
+            self.flag_capture_distance, self.flag_standoff_distance,
+            self.min_goal_clearance, self.flag_capture_margin)
         rospy.loginfo('SlamFrontierExplorerCtf: initialized and ready.')
 
     def _wait_for_all_move_base(self):
@@ -224,41 +271,23 @@ class SlamFrontierExplorerCtf:
 
     def _flag_estimate_cb(self, msg, ns):
         with self.flag_lock:
-            new_xy = (msg.pose.position.x, msg.pose.position.y)
-            old_xy = self.flag_estimate[ns]
-
-            # Check consistency: if the new estimate is far from the previous
-            # one, reset the counter (the detector is probably seeing noise).
-            if old_xy is not None:
-                d = math.hypot(new_xy[0] - old_xy[0], new_xy[1] - old_xy[1])
-                if d < self._flag_consistency_radius:
-                    self._flag_consistent_count[ns] += 1
-                else:
-                    # Position jumped — reset counter and start fresh
-                    self._flag_consistent_count[ns] = 1
-                    rospy.loginfo('[%s] Flag estimate jumped %.1fm — resetting consistency counter', ns, d)
-            else:
-                self._flag_consistent_count[ns] = 1
-
-            self.flag_estimate[ns] = new_xy
+            self.flag_estimate[ns] = (msg.pose.position.x, msg.pose.position.y)
             self.flag_estimate_time[ns] = rospy.Time.now().to_sec()
-            self.last_known_flag_xy = new_xy
+            self.last_known_flag_xy = self.flag_estimate[ns]
 
-    def _get_own_fresh_flag_estimate(self, ns):
+    def _has_fresh_flag_estimate(self, ns):
+        """Fresh vision estimate for this robot (same logic as RobotAgent::hasFreshFlagEstimate)."""
         with self.flag_lock:
             if self.flag_estimate[ns] is None:
                 return False, None
             age = rospy.Time.now().to_sec() - self.flag_estimate_time[ns]
             if age > self.flag_memory_timeout:
                 return False, None
-            # Require enough consistent readings to avoid false positives
-            if self._flag_consistent_count[ns] < self._flag_consistency_threshold:
-                return False, None
             return True, self.flag_estimate[ns]
 
     def _get_fresh_flag_estimate(self, ns):
         """Any fresh estimate (own or teammate) — for markers / awareness only."""
-        has_own, own_est = self._get_own_fresh_flag_estimate(ns)
+        has_own, own_est = self._has_fresh_flag_estimate(ns)
         if has_own:
             return True, own_est
 
@@ -269,6 +298,68 @@ class SlamFrontierExplorerCtf:
                 if age_other <= self.flag_memory_timeout:
                     return True, self.flag_estimate[other_ns]
             return False, None
+
+    def _update_search_flag_states(self):
+        """Switch robots between exploration and flag pursuit without changing game phase."""
+        with self._state_lock:
+            for ns in ('robot1', 'robot2'):
+                has_flag, _ = self._has_fresh_flag_estimate(ns)
+                current = self._search_state[ns]
+                if has_flag:
+                    if current != 'PURSUING_FLAG':
+                        rospy.loginfo(
+                            'CTF FLAG: %s localized the flag; switching to approach', ns)
+                        self._search_state[ns] = 'PURSUING_FLAG'
+                        self._clients[ns].cancel_all_goals()
+                        self._last_flag_goal.pop(ns, None)
+                        self._last_flag_goal_time.pop(ns, None)
+                elif current != 'EXPLORING':
+                    rospy.loginfo(
+                        'CTF FLAG: %s lost the estimate; returning to exploration', ns)
+                    self._search_state[ns] = 'EXPLORING'
+                    self._clients[ns].cancel_all_goals()
+                    self._last_flag_goal.pop(ns, None)
+                    self._last_flag_goal_time.pop(ns, None)
+
+    def _find_first_capture_candidate(self):
+        """Return (ns, flag_xy) for the first robot within capture range, or None."""
+        for ns in ('robot1', 'robot2'):
+            has_flag, flag_xy = self._has_fresh_flag_estimate(ns)
+            if not has_flag or flag_xy is None:
+                continue
+
+            pose = self._get_robot_pose(ns + '/base_footprint')
+            if pose is None:
+                continue
+
+            d_flag = math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
+            maneuver_reach = self.flag_standoff_distance + self.min_goal_clearance
+            mb_state = self._clients[ns].get_state()
+            within_capture = d_flag <= self.flag_capture_distance
+            # Require approach goal completion or physical proximity to standoff.
+            # Log evidence: capture at 0.277 m with mb_state ACTIVE (still approaching).
+            approach_done = (
+                mb_state == GoalStatus.SUCCEEDED
+                or d_flag <= self.flag_standoff_distance + 0.03)
+            # #region agent log
+            if d_flag <= self.flag_capture_distance + 0.25:
+                _dbg('A', 'slam_frontier_explorer_ctf.py:_find_first_capture_candidate',
+                     'capture_distance_check', {
+                         'ns': ns,
+                         'd_flag': round(d_flag, 3),
+                         'capture_dist': round(self.flag_capture_distance, 3),
+                         'standoff': self.flag_standoff_distance,
+                         'min_goal_clearance': self.min_goal_clearance,
+                         'robot_radius': self.robot_radius,
+                         'maneuver_reach': round(maneuver_reach, 3),
+                         'within_capture': within_capture,
+                         'approach_done': approach_done,
+                         'mb_state': mb_state,
+                     }, run_id='post-fix')
+            # #endregion
+            if within_capture and approach_done:
+                return ns, flag_xy
+        return None
 
     def _map_cb(self, msg):
         with self._map_lock:
@@ -471,7 +562,7 @@ class SlamFrontierExplorerCtf:
         best_score = float('inf')
         used_fallback = False
 
-        has_own_flag, own_flag = self._get_own_fresh_flag_estimate(ns)
+        has_own_flag, own_flag = self._has_fresh_flag_estimate(ns)
 
         for wx, wy, size in frontiers:
             if self._is_blacklisted(wx, wy):
@@ -551,8 +642,8 @@ class SlamFrontierExplorerCtf:
                      if pose is not None else float('inf'))
         rate = rospy.Rate(5.0)
         while rospy.Time.now() < deadline and not rospy.is_shutdown() and not self._stop.is_set():
-            # Only interrupt exploration for this robot's own flag sighting
-            has_flag, _ = self._get_own_fresh_flag_estimate(ns)
+            # Interrupt exploration when this robot sees the flag (pursuit handled separately)
+            has_flag, _ = self._has_fresh_flag_estimate(ns)
             if has_flag or self.game_state != 'EXPLORING':
                 client.cancel_goal()
                 return False
@@ -862,54 +953,47 @@ class SlamFrontierExplorerCtf:
                         carrier_move >= self.intercept_carrier_move_threshold):
                     self._send_pursuer_intercept(cpose, ppose)
 
-    def _try_capture(self, ns, pose, flag_xy):
+    def _capture_flag(self, ns, flag_xy):
         with self._capture_lock:
             if self.game_state != 'EXPLORING':
-                return False
+                return
 
-            d_flag = math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
-            if d_flag > self.flag_capture_distance:
-                return False
+            pose = self._get_robot_pose(ns + '/base_footprint')
+            d_flag = (math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
+                      if pose is not None else -1.0)
+            # #region agent log
+            _dbg('B', 'slam_frontier_explorer_ctf.py:_capture_flag',
+                 'flag_captured', {
+                     'ns': ns,
+                     'd_flag': round(d_flag, 3),
+                     'capture_dist': self.flag_capture_distance,
+                     'standoff': self.flag_standoff_distance,
+                     'min_goal_clearance': self.min_goal_clearance,
+                     'robot_radius': self.robot_radius,
+                     'recommended_min': round(
+                         self.flag_standoff_distance + self.min_goal_clearance, 3),
+                 })
+            # #endregion
+            rospy.loginfo('==================================================')
+            rospy.loginfo(
+                'CTF CAPTURE: %s reached the flag at (%.2f, %.2f), distance=%.2f m',
+                ns, flag_xy[0], flag_xy[1], d_flag)
+            rospy.loginfo('==================================================')
 
-            # Safety: don't allow capture unless robot has actively pursued
-            # the flag (sent at least one approach goal). This prevents
-            # false captures from a single-frame detection near the robot.
-            if not self._flag_approach_sent.get(ns, False):
-                rospy.logwarn('[%s] Within capture distance but no approach goal sent yet — ignoring', ns)
-                return False
+            for client in self._clients.values():
+                client.cancel_all_goals()
 
-            if ns == 'robot2':
-                r1_pose = self._get_robot_pose('robot1/base_footprint')
-                has_r1, r1_flag = self._get_own_fresh_flag_estimate('robot1')
-                if r1_pose is not None and has_r1 and r1_flag is not None:
-                    d1 = math.hypot(r1_pose[0] - r1_flag[0], r1_pose[1] - r1_flag[1])
-                    if d1 <= self.flag_capture_distance:
-                        return False
+            self.game_state = 'CAPTURED'
+            self.carrier_ns = ns
+            self.pursuer_ns = 'robot2' if ns == 'robot1' else 'robot1'
+            self._flag_captured_pub.publish(Bool(data=True))
 
-            self._capture_flag(ns, flag_xy)
-            return True
-
-    def _capture_flag(self, ns, flag_xy):
-        rospy.loginfo(f'==================================================')
-        rospy.loginfo(f'!!! FLAG CAPTURED BY {ns} at ({flag_xy[0]:.2f}, {flag_xy[1]:.2f}) !!!')
-        rospy.loginfo(f'==================================================')
-
-        # Cancel goals on both robots
-        for client in self._clients.values():
-            client.cancel_all_goals()
-
-        # Stop exploration thread logic
-        self.game_state = 'CAPTURED'
-        self.carrier_ns = ns
-        self.pursuer_ns = 'robot2' if ns == 'robot1' else 'robot1'
-        self._flag_captured_pub.publish(Bool(data=True))
-
-        # Pause for capture celebration
         rospy.sleep(self.capture_pause_sec)
 
-        # Start Chase phase
-        self.game_state = 'CHASE'
-        self._chase_initialized = False
+        with self._capture_lock:
+            if self.game_state == 'CAPTURED':
+                self.game_state = 'CHASE'
+                self._chase_initialized = False
 
     def _robot_loop(self, cfg):
         ns = cfg['ns']
@@ -927,39 +1011,62 @@ class SlamFrontierExplorerCtf:
                 rospy.sleep(0.5)
                 continue
 
-            # Only pursue the flag with this robot's own vision (not teammate estimate)
-            has_flag, flag_xy = self._get_own_fresh_flag_estimate(ns)
-            if has_flag:
-                pose = self._get_robot_pose(cfg['base_frame'])
-                if pose is not None:
-                    if self._try_capture(ns, pose, flag_xy):
-                        continue
+            self._update_search_flag_states()
 
-                    # Always try to send/update the flag goal FIRST.
-                    # This avoids reading a stale PREEMPTED state from a
-                    # cancelled exploration goal and misinterpreting it as a
-                    # flag approach failure.
-                    if self._should_send_flag_goal(ns, flag_xy[0], flag_xy[1]):
-                        gx, gy, gyaw = self._get_approach_goal(pose, flag_xy)
-                        d_flag = math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
-                        rospy.loginfo(
-                            '[%s] Pursuing flag candidate at (%.2f, %.2f), distance: %.2f m',
-                            ns, flag_xy[0], flag_xy[1], d_flag)
-                        client.send_goal(self._make_goal(gx, gy, gyaw))
-                        self._flag_approach_sent[ns] = True
-                    else:
-                        # A flag goal was already sent recently — check if
-                        # move_base has given up on it.
-                        mb_state = client.get_state()
-                        if mb_state in (GoalStatus.ABORTED, GoalStatus.REJECTED):
-                            rospy.logwarn('[%s] Flag approach ABORTED/REJECTED; resending', ns)
-                            # Force a resend on the next iteration
-                            self._last_flag_goal_time[ns] = 0.0
+            with self._state_lock:
+                search_state = self._search_state[ns]
+
+            if search_state == 'PURSUING_FLAG':
+                has_flag, flag_xy = self._has_fresh_flag_estimate(ns)
+                if has_flag and flag_xy is not None:
+                    pose = self._get_robot_pose(cfg['base_frame'])
+                    if pose is not None:
+                        if self._should_send_flag_goal(ns, flag_xy[0], flag_xy[1]):
+                            gx, gy, gyaw = self._get_approach_goal(pose, flag_xy)
+                            d_flag = math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
+                            d_goal = math.hypot(gx - pose[0], gy - pose[1])
+                            rospy.loginfo(
+                                'CTF FLAG: %s approach goal=(%.2f, %.2f) flag=(%.2f, %.2f) distance=%.2f m',
+                                ns, gx, gy, flag_xy[0], flag_xy[1], d_flag)
+                            # #region agent log
+                            _dbg('C', 'slam_frontier_explorer_ctf.py:_robot_loop',
+                                 'approach_goal_sent', {
+                                     'ns': ns,
+                                     'd_flag': round(d_flag, 3),
+                                     'd_to_approach_goal': round(d_goal, 3),
+                                     'standoff': self.flag_standoff_distance,
+                                     'capture_dist': self.flag_capture_distance,
+                                     'robot_radius': self.robot_radius,
+                                 })
+                            # #endregion
+                            client.send_goal(self._make_goal(gx, gy, gyaw))
+                        else:
+                            mb_state = client.get_state()
+                            if mb_state in (GoalStatus.ABORTED, GoalStatus.REJECTED):
+                                rospy.logwarn(
+                                    '[%s] Flag approach ABORTED/REJECTED; resending', ns)
+                                self._last_flag_goal_time[ns] = 0.0
+                            d_flag = math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
+                            now = time.monotonic()
+                            last = self._last_dbg_pursuit_log.get(ns, 0.0)
+                            if d_flag < 0.7 and (now - last) >= 1.0:
+                                self._last_dbg_pursuit_log[ns] = now
+                                # #region agent log
+                                _dbg('E', 'slam_frontier_explorer_ctf.py:_robot_loop',
+                                     'pursuit_progress', {
+                                         'ns': ns,
+                                         'd_flag': round(d_flag, 3),
+                                         'capture_dist': self.flag_capture_distance,
+                                         'standoff': self.flag_standoff_distance,
+                                         'mb_state': mb_state,
+                                         'mb_succeeded': mb_state == GoalStatus.SUCCEEDED,
+                                     })
+                                # #endregion
 
                 rospy.sleep(0.2)
                 continue
 
-            # Standard exploration logic
+            # Standard exploration logic (only while EXPLORING sub-state)
             grid = self._get_map()
             if grid is None:
                 rospy.sleep(1.0)
@@ -1122,6 +1229,12 @@ class SlamFrontierExplorerCtf:
             unknown = self._unknown_count(grid)
 
             if self.game_state == 'EXPLORING':
+                self._update_search_flag_states()
+                candidate = self._find_first_capture_candidate()
+                if candidate is not None:
+                    cap_ns, flag_xy = candidate
+                    self._capture_flag(cap_ns, flag_xy)
+
                 rospy.loginfo_throttle(
                     10.0, 'Exploration: map coverage=%.1f%%, unknown cells=%d, game_state=%s',
                     cov * 100.0, unknown, self.game_state)

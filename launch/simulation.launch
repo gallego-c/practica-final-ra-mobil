@@ -1,15 +1,17 @@
 <launch>
-  <arg name="robot1_x" default="-3.0"/>
-  <arg name="robot1_y" default="-3.0"/>
+  <!-- world: ctf_world | nine_rooms_world | hallway_world | hallway_obstacles_world -->
+  <arg name="world" default="ctf_world"/>
+  <arg name="robot1_x" default="$(eval -3.5 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else -3.0)"/>
+  <arg name="robot1_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else -3.0)"/>
   <arg name="robot1_yaw" default="0.0"/>
-  <arg name="robot2_x" default="3.0"/>
-  <arg name="robot2_y" default="3.0"/>
+  <arg name="robot2_x" default="$(eval 3.5 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else 3.0)"/>
+  <arg name="robot2_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else 3.0)"/>
   <arg name="robot2_yaw" default="3.1416"/>
 
   <!-- Posición de la bandera. Cámbiala para hacer pruebas:
        roslaunch ctf_navigation ctf_game.launch flag_x:=2.0 flag_y:=-3.0 -->
-  <arg name="flag_x" default="-3.2"/>
-  <arg name="flag_y" default="3.2"/>
+  <arg name="flag_x" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else -3.2)"/>
+  <arg name="flag_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else 3.2)"/>
 
   <!-- Keep Gazebo transport discovery local. This avoids intermittent WSL
        discovery failures when Gazebo advertises internal topics such as
@@ -18,7 +20,7 @@
   <env name="GAZEBO_MASTER_URI" value="http://127.0.0.1:11345"/>
 
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
-    <arg name="world_name" value="$(find ctf_navigation)/worlds/ctf_world.world"/>
+    <arg name="world_name" value="$(find ctf_navigation)/worlds/$(arg world).world"/>
     <arg name="paused" value="false"/>
     <arg name="use_sim_time" value="true"/>
     <arg name="gui" value="true"/>

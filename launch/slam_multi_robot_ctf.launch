@@ -103,22 +103,23 @@
     <param name="territory_penalty" value="1.5"/>
     <param name="frontier_claim_sec" value="50.0"/>
     <param name="min_goal_clearance" value="0.15"/>
+    <param name="robot_radius" value="0.28"/>
     <param name="progress_timeout" value="15.0"/>
     <param name="min_progress_distance" value="0.15"/>
     <param name="startup_delay" value="12.0"/>
     <param name="move_base_timeout" value="120.0"/>
     <param name="idle_frontier_cycles" value="6"/>
 
-    <!-- CTF parameters -->
-    <param name="flag_capture_distance" value="0.65"/>
-    <param name="flag_standoff_distance" value="0.35"/>
+    <!-- CTF: capture = standoff + min_goal_clearance + flag_capture_margin (default 0.45 m) -->
+    <param name="flag_standoff_distance" value="0.20"/>
+    <param name="flag_capture_margin" value="0.10"/>
     <param name="chase_flag_clearance" value="0.75"/>
     <param name="chase_clearance_reached_dist" value="0.20"/>
     <param name="chase_clearance_min_travel" value="0.25"/>
     <param name="catch_distance" value="0.65"/>
     <param name="chase_goal_period" value="1.0"/>
     <param name="capture_pause_sec" value="3.0"/>
-    <param name="flag_memory_timeout" value="12.0"/>
+    <param name="flag_memory_timeout" value="5.0"/>
     <param name="waypoint_reached_dist" value="0.55"/>
     <param name="intercept_enabled" value="true"/>
     <param name="intercept_direct_chase_distance" value="1.25"/>
