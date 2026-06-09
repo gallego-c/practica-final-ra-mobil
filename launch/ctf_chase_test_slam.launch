@@ -1,0 +1,187 @@
+<launch>
+  <!-- ==========================================================================
+       PRUEBA DE FASE 2 (PERSECUCIÓN) – MAPA SLAM (PARCIALMENTE DESCONOCIDO)
+
+       Igual que ctf_chase_test_static.launch pero usa SLAM cooperativo
+       (gmapping + map_merge) de modo que partes del entorno no están mapeadas
+       cuando empieza la persecución.  El pursuer debe navegar con información
+       incompleta del entorno, lo cual prueba la robustez del algoritmo.
+
+       Uso básico:
+         roslaunch ctf_navigation ctf_chase_test_slam.launch
+
+       Con posición del pursuer personalizada:
+         roslaunch ctf_navigation ctf_chase_test_slam.launch \
+           pursuer_x:=2.0 pursuer_y:=-1.5
+
+       Para obtener una posición aleatoria del pursuer primero levanta el mapa
+       y luego usa el script auxiliar:
+         rosrun ctf_navigation random_free_spawn.py
+       ========================================================================== -->
+
+  <arg name="local_planner"         default="dwa"/>
+  <arg name="world_frame"           default="map"/>
+  <arg name="merged_map_topic"      default="/merged_map"/>
+  <arg name="rviz"                  default="true"/>
+
+  <!-- Flag position -->
+  <arg name="flag_x"                default="-3.2"/>
+  <arg name="flag_y"                default="3.2"/>
+
+  <!-- Carrier (robot1): spawns close to the flag so it needs to return home -->
+  <arg name="carrier_x"             default="-3.0"/>
+  <arg name="carrier_y"             default="3.0"/>
+  <arg name="carrier_yaw"           default="3.1416"/>
+
+  <!-- Pursuer (robot2): spawns at a free random-looking position.
+       Override with pursuer_x / pursuer_y from random_free_spawn.py. -->
+  <arg name="pursuer_x"             default="2.0"/>
+  <arg name="pursuer_y"             default="-2.5"/>
+  <arg name="pursuer_yaw"           default="1.5708"/>
+
+  <!-- Which robot is the initial carrier (robot1 or robot2) -->
+  <arg name="initial_carrier_ns"    default="robot1"/>
+
+  <!-- Intercept tuning (velocity-aware algorithm) -->
+  <arg name="pursuer_nav_speed"     default="0.20"/>
+  <arg name="carrier_speed_window"  default="4.0"/>
+  <arg name="intercept_margin_time" default="1.5"/>
+
+  <!-- Initial map alignment for map_merge (typically 0 if robots start at known poses) -->
+  <arg name="robot1_map_init_x"   default="0.0"/>
+  <arg name="robot1_map_init_y"   default="0.0"/>
+  <arg name="robot1_map_init_yaw" default="0.0"/>
+  <arg name="robot2_map_init_x"   default="0.0"/>
+  <arg name="robot2_map_init_y"   default="0.0"/>
+  <arg name="robot2_map_init_yaw" default="0.0"/>
+
+  <!-- ── 1. Gazebo Simulation ──────────────────────────────────────────────── -->
+  <include file="$(find ctf_navigation)/launch/simulation.launch">
+    <arg name="robot1_x"   value="$(arg carrier_x)"/>
+    <arg name="robot1_y"   value="$(arg carrier_y)"/>
+    <arg name="robot1_yaw" value="$(arg carrier_yaw)"/>
+    <arg name="robot2_x"   value="$(arg pursuer_x)"/>
+    <arg name="robot2_y"   value="$(arg pursuer_y)"/>
+    <arg name="robot2_yaw" value="$(arg pursuer_yaw)"/>
+    <arg name="flag_x"     value="$(arg flag_x)"/>
+    <arg name="flag_y"     value="$(arg flag_y)"/>
+  </include>
+
+  <!-- ── 2. Shared SLAM (GMapping × 2 + map_merge) ────────────────────────── -->
+  <include file="$(find ctf_navigation)/launch/shared_slam.launch">
+    <arg name="world_frame"       value="$(arg world_frame)"/>
+    <arg name="merged_map_topic"  value="$(arg merged_map_topic)"/>
+    <arg name="robot1_init_x"     value="$(arg robot1_map_init_x)"/>
+    <arg name="robot1_init_y"     value="$(arg robot1_map_init_y)"/>
+    <arg name="robot1_init_yaw"   value="$(arg robot1_map_init_yaw)"/>
+    <arg name="robot2_init_x"     value="$(arg robot2_map_init_x)"/>
+    <arg name="robot2_init_y"     value="$(arg robot2_map_init_y)"/>
+    <arg name="robot2_init_yaw"   value="$(arg robot2_map_init_yaw)"/>
+  </include>
+
+  <!-- ── 3. Inter-robot priority coordination & collision avoidance ────────── -->
+  <node pkg="ctf_navigation" type="robot_coordinator.py"
+        name="robot_coordinator" output="screen">
+    <param name="target_frame"      value="$(arg world_frame)"/>
+    <param name="robot_radius"      value="0.28"/>
+    <param name="max_avoid_distance" value="3.5"/>
+  </node>
+
+  <!-- ── 4. Navigation (move_base on /merged_map) ─────────────────────────── -->
+  <include file="$(find ctf_navigation)/launch/slam_navigation.launch">
+    <arg name="local_planner"    value="$(arg local_planner)"/>
+    <arg name="world_frame"      value="$(arg world_frame)"/>
+    <arg name="merged_map_topic" value="$(arg merged_map_topic)"/>
+  </include>
+
+  <!-- ── 5. Flag detector ─────────────────────────────────────────────────── -->
+  <group ns="robot1">
+    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
+          output="screen">
+      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
+      <param name="camera_topic"            value="camera/rgb/image_raw"/>
+      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
+      <param name="base_frame"              value="robot1/base_footprint"/>
+      <param name="map_frame"               value="$(arg world_frame)"/>
+    </node>
+  </group>
+
+  <group ns="robot2">
+    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
+          output="screen">
+      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
+      <param name="camera_topic"            value="camera/rgb/image_raw"/>
+      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
+      <param name="base_frame"              value="robot2/base_footprint"/>
+      <param name="map_frame"               value="$(arg world_frame)"/>
+    </node>
+  </group>
+
+  <!-- ── 6. SLAM CTF Coordinator – start directly in chase phase ──────────── -->
+  <node pkg="ctf_navigation" type="slam_frontier_explorer_ctf.py"
+        name="slam_frontier_explorer_ctf" output="screen">
+    <param name="map_frame"    value="$(arg world_frame)"/>
+    <param name="map_topic"    value="$(arg merged_map_topic)"/>
+    <param name="flag_x"       value="$(arg flag_x)"/>
+    <param name="flag_y"       value="$(arg flag_y)"/>
+
+    <!-- Skip exploration: jump straight to chase -->
+    <param name="start_phase"          value="CHASE"/>
+    <param name="initial_carrier_ns"   value="$(arg initial_carrier_ns)"/>
+    <param name="chase_startup_delay"  value="15.0"/>
+
+    <!-- Velocity-aware intercept parameters -->
+    <param name="pursuer_nav_speed"     value="$(arg pursuer_nav_speed)"/>
+    <param name="carrier_speed_window"  value="$(arg carrier_speed_window)"/>
+    <param name="carrier_min_speed"     value="0.05"/>
+    <param name="intercept_margin_time" value="$(arg intercept_margin_time)"/>
+    <param name="intercept_look_back"   value="0.5"/>
+    <param name="goal_snap_clearance"       value="0.30"/>
+    <param name="goal_snap_search_radius"   value="2.0"/>
+
+    <!-- Intercept / chase tuning (kept from slam_multi_robot_ctf.launch defaults) -->
+    <param name="catch_distance"                   value="0.65"/>
+    <param name="waypoint_reached_dist"            value="0.55"/>
+    <param name="chase_flag_clearance"             value="0.75"/>
+    <param name="chase_clearance_reached_dist"     value="0.20"/>
+    <param name="chase_clearance_min_travel"       value="0.25"/>
+    <param name="intercept_enabled"                value="true"/>
+    <param name="intercept_direct_chase_distance"  value="1.25"/>
+    <param name="intercept_arrival_margin"         value="0.30"/>
+    <param name="intercept_step"                   value="0.25"/>
+    <param name="intercept_min_lead"               value="1.0"/>
+    <param name="intercept_carrier_move_threshold" value="1.25"/>
+    <param name="carrier_home_resend_cooldown"     value="3.0"/>
+    <param name="carrier_home_stuck_timeout"       value="6.0"/>
+    <param name="carrier_home_progress_threshold"  value="0.10"/>
+    <param name="direct_chase_refresh_sec"         value="2.0"/>
+    <param name="direct_chase_carrier_move"        value="0.25"/>
+    <param name="capture_pause_sec"                value="1.0"/>
+    <param name="flag_capture_distance"            value="0.40"/>
+    <param name="flag_standoff_distance"           value="0.20"/>
+    <param name="flag_memory_timeout"              value="5.0"/>
+
+    <!-- Exploration params (not used in chase mode but kept for completeness) -->
+    <param name="goal_timeout"         value="45.0"/>
+    <param name="min_coverage"         value="0.72"/>
+    <param name="gain_scale"           value="1.6"/>
+    <param name="voronoi_margin"       value="0.60"/>
+    <param name="separation_weight"    value="2.5"/>
+    <param name="flag_bias_weight"     value="0.8"/>
+    <param name="territory_penalty"    value="4.0"/>
+    <param name="frontier_claim_sec"   value="50.0"/>
+    <param name="min_goal_clearance"   value="0.25"/>
+    <param name="progress_timeout"     value="15.0"/>
+    <param name="min_progress_distance" value="0.15"/>
+    <param name="move_base_timeout"    value="120.0"/>
+    <param name="idle_frontier_cycles" value="12"/>
+
+    <!-- Home coordinates -->
+    <rosparam param="robot1_home">[-3.0, -3.0, 0.0]</rosparam>
+    <rosparam param="robot2_home">[3.0, 3.0, 3.1416]</rosparam>
+  </node>
+
+  <!-- ── 7. RViz ──────────────────────────────────────────────────────────── -->
+  <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz"
+        args="-d $(find ctf_navigation)/rviz/slam_multi_robot_ctf.rviz"/>
+</launch>

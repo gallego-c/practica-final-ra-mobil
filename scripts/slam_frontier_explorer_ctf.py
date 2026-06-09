@@ -31,6 +31,8 @@ NEIGHBORS_4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
 # #region agent log
 _DEBUG_LOG_PATH = os.path.join(
     rospkg.RosPack().get_path('ctf_navigation'), 'debug-36a89d.log')
+_DEBUG_LOG_PATH_CAD0E0 = os.path.join(
+    rospkg.RosPack().get_path('ctf_navigation'), 'debug-cad0e0.log')
 
 
 def _agent_debug_log(location, message, hypothesis_id, data):
@@ -44,6 +46,22 @@ def _agent_debug_log(location, message, hypothesis_id, data):
             'timestamp': int(time.time() * 1000),
         }
         with open(_DEBUG_LOG_PATH, 'a') as log_file:
+            log_file.write(json.dumps(payload) + '\n')
+    except Exception:
+        pass
+
+
+def _debug_log_cad0e0(location, message, hypothesis_id, data):
+    try:
+        payload = {
+            'sessionId': 'cad0e0',
+            'location': location,
+            'message': message,
+            'hypothesisId': hypothesis_id,
+            'data': data,
+            'timestamp': int(time.time() * 1000),
+        }
+        with open(_DEBUG_LOG_PATH_CAD0E0, 'a') as log_file:
             log_file.write(json.dumps(payload) + '\n')
     except Exception:
         pass
@@ -137,6 +155,23 @@ class SlamFrontierExplorerCtf:
         self.direct_chase_carrier_move = float(
             rospy.get_param('~direct_chase_carrier_move', 0.25))
 
+        # Phase 2 direct-start support
+        self.start_phase = rospy.get_param('~start_phase', 'EXPLORING')
+        self.initial_carrier_ns = rospy.get_param('~initial_carrier_ns', 'robot1')
+        self.chase_startup_delay = float(rospy.get_param('~chase_startup_delay', 8.0))
+
+        # Velocity-aware intercept parameters
+        self.pursuer_nav_speed = float(rospy.get_param('~pursuer_nav_speed', 0.20))
+        self.carrier_speed_window = float(rospy.get_param('~carrier_speed_window', 4.0))
+        self.carrier_min_speed = float(rospy.get_param('~carrier_min_speed', 0.05))
+        self.intercept_margin_time = float(rospy.get_param('~intercept_margin_time', 1.5))
+        self.intercept_look_back = float(rospy.get_param('~intercept_look_back', 0.5))
+        self.goal_snap_clearance = float(rospy.get_param('~goal_snap_clearance', 0.30))
+        self.goal_snap_search_radius = float(
+            rospy.get_param('~goal_snap_search_radius', 2.0))
+        self.flag_x = float(rospy.get_param('~flag_x', -3.2))
+        self.flag_y = float(rospy.get_param('~flag_y', 3.2))
+
         # Game states: 'EXPLORING', 'CAPTURED', 'CHASE', 'FINISHED'
         self.game_state = 'EXPLORING'
         self.carrier_ns = None
@@ -152,6 +187,9 @@ class SlamFrontierExplorerCtf:
         self._last_direct_chase_sent = 0.0
         self._last_carrier_progress_time = 0.0
         self._last_carrier_progress_home_dist = -1.0
+
+        # Carrier velocity tracking for time-based intercept
+        self._carrier_vel_history = []  # list of (x, y, monotonic_time) tuples
 
         self.robots = rospy.get_param('~robots', [
             {'ns': 'robot1', 'base_frame': 'robot1/base_footprint'},
@@ -211,13 +249,28 @@ class SlamFrontierExplorerCtf:
             self._flag_est_subs[ns] = rospy.Subscriber(
                 '/' + ns + '/flag_detector/flag_estimate', PoseStamped, self._flag_estimate_cb, callback_args=ns, queue_size=1)
 
-        rospy.loginfo('Waiting %.0f s for navigation stack...', self.startup_delay)
-        rospy.sleep(self.startup_delay)
+        delay = (self.chase_startup_delay
+                 if self.start_phase == 'CHASE'
+                 else self.startup_delay)
+        rospy.loginfo('Waiting %.0f s for navigation stack...', delay)
+        rospy.sleep(delay)
         if not self._wait_for_all_move_base():
             raise rospy.ROSException('move_base not ready for all robots')
 
-        # Publish initial capture state (False)
-        self._flag_captured_pub.publish(Bool(data=False))
+        if self.start_phase == 'CHASE':
+            rospy.loginfo(
+                'start_phase=CHASE: skipping exploration; %s is the carrier',
+                self.initial_carrier_ns)
+            self.carrier_ns = self.initial_carrier_ns
+            self.pursuer_ns = (
+                'robot2' if self.initial_carrier_ns == 'robot1' else 'robot1')
+            self.game_state = 'CAPTURED'  # triggers _init_chase() on first run() tick
+            self._chase_initialized = False
+            self._flag_captured_pub.publish(Bool(data=True))
+        else:
+            # Publish initial capture state (False)
+            self._flag_captured_pub.publish(Bool(data=False))
+
         rospy.loginfo('SlamFrontierExplorerCtf: initialized and ready.')
 
     def _wait_for_all_move_base(self):
@@ -386,11 +439,13 @@ class SlamFrontierExplorerCtf:
                 centroids.append((wx, wy, len(cells)))
         return centroids
 
-    def _cell_has_clearance(self, grid, mx, my):
+    def _cell_has_clearance(self, grid, mx, my, clearance_m=None):
         info = grid.info
         w, h = info.width, info.height
         data = grid.data
-        clear_cells = max(1, int(round(self.min_goal_clearance / info.resolution)))
+        if clearance_m is None:
+            clearance_m = self.min_goal_clearance
+        clear_cells = max(1, int(round(clearance_m / info.resolution)))
 
         if mx < clear_cells or my < clear_cells or mx >= w - clear_cells or my >= h - clear_cells:
             return False
@@ -653,22 +708,99 @@ class SlamFrontierExplorerCtf:
     def _goal_succeeded(self, ns):
         return self._clients[ns].get_state() == GoalStatus.SUCCEEDED
 
-    def _make_chase_clearance_goal(self, carrier_pose, home):
+    def _snap_chase_goal(self, wx, wy):
+        """Return nearest collision-free goal to (wx, wy) on the current map."""
+        grid = self._get_map()
+        if grid is None:
+            return wx, wy
+
+        info = grid.info
+        mx, my = world_to_map(wx, wy, info)
+        search_cells = max(1, int(round(self.goal_snap_search_radius / info.resolution)))
+
+        clearance = self.goal_snap_clearance
+        if self._cell_has_clearance(grid, mx, my, clearance):
+            return map_to_world(mx, my, info)
+
+        best = None
+        best_dist = float('inf')
+        for radius in range(1, search_cells + 1):
+            for dy in range(-radius, radius + 1):
+                for dx in range(-radius, radius + 1):
+                    if abs(dx) != radius and abs(dy) != radius:
+                        continue
+                    cx = mx + dx
+                    cy = my + dy
+                    if not self._cell_has_clearance(grid, cx, cy, clearance):
+                        continue
+                    gx, gy = map_to_world(cx, cy, info)
+                    d = math.hypot(gx - wx, gy - wy)
+                    if d < best_dist:
+                        best_dist = d
+                        best = (gx, gy)
+            if best is not None:
+                if best_dist > 0.05:
+                    rospy.loginfo_throttle(
+                        2.0, 'CTF CHASE: snapped goal (%.2f, %.2f) -> (%.2f, %.2f)',
+                        wx, wy, best[0], best[1])
+                return best
+
+        return wx, wy
+
+    def _update_carrier_vel(self, x, y):
+        t = time.monotonic()
+        self._carrier_vel_history.append((x, y, t))
+        cutoff = t - self.carrier_speed_window
+        self._carrier_vel_history = [
+            s for s in self._carrier_vel_history if s[2] >= cutoff
+        ]
+
+    def _estimate_carrier_speed(self):
+        if len(self._carrier_vel_history) < 2:
+            return 0.0
+        total_dist = 0.0
+        for i in range(1, len(self._carrier_vel_history)):
+            x1, y1, _ = self._carrier_vel_history[i - 1]
+            x2, y2, _ = self._carrier_vel_history[i]
+            total_dist += math.hypot(x2 - x1, y2 - y1)
+        dt = self._carrier_vel_history[-1][2] - self._carrier_vel_history[0][2]
+        return total_dist / dt if dt > 1e-3 else 0.0
+
+    def _resolve_flag_position(self, carrier_ns):
+        has_flag, flag_xy = self._get_fresh_flag_estimate(carrier_ns)
+        if has_flag and flag_xy is not None:
+            return flag_xy
+        return (self.flag_x, self.flag_y)
+
+    def _make_chase_clearance_goal(self, carrier_pose, home, flag_xy=None):
         cx, cy, _ = carrier_pose
         hx, hy, hyaw = home
-        dx = hx - cx
-        dy = hy - cy
-        dist = math.hypot(dx, dy)
-        if dist < 1e-3:
+        home_dx = hx - cx
+        home_dy = hy - cy
+        home_dist = math.hypot(home_dx, home_dy)
+        if home_dist < 1e-3:
             return hx, hy, hyaw
 
-        step = min(self.chase_flag_clearance, max(0.0, dist - 0.10))
+        step = min(self.chase_flag_clearance, max(0.0, home_dist - 0.10))
         if step < self.chase_clearance_min_travel:
             return hx, hy, hyaw
 
-        return cx + (dx / dist) * step, cy + (dy / dist) * step, math.atan2(dy, dx)
+        if flag_xy is not None:
+            fx, fy = flag_xy
+            away_dx = cx - fx
+            away_dy = cy - fy
+            flag_dist = math.hypot(away_dx, away_dy)
+            if flag_dist > 1e-3 and flag_dist <= self.flag_capture_distance * 2.5:
+                return (cx + (away_dx / flag_dist) * step,
+                        cy + (away_dy / flag_dist) * step,
+                        math.atan2(away_dy, away_dx))
 
-    def _make_interception_goal(self, carrier_pose, pursuer_pose, home):
+        return (cx + (home_dx / home_dist) * step,
+                cy + (home_dy / home_dist) * step,
+                math.atan2(home_dy, home_dx))
+
+    # carrier_speed: estimated carrier speed (m/s); 0 triggers legacy fallback.
+    def _make_interception_goal(self, carrier_pose, pursuer_pose, home, carrier_speed=0.0):
         cx, cy, _ = carrier_pose
         px, py, _ = pursuer_pose
         hx, hy, _ = home
@@ -685,19 +817,50 @@ class SlamFrontierExplorerCtf:
         ux = home_dx / home_dist
         uy = home_dy / home_dist
         step = max(0.10, self.intercept_step)
+
+        # Use time-based model when carrier speed is reliably estimated.
+        use_time_model = (carrier_speed >= self.carrier_min_speed)
+        v_c = carrier_speed if use_time_model else 1.0
+        v_p = self.pursuer_nav_speed if use_time_model else 1.0
+
+        # Start from the pursuer's projection onto the carrier's path to home so
+        # that we find the closest intercept point first, not the earliest.
+        proj_s = (px - cx) * ux + (py - cy) * uy
+        s_start = max(0.0, proj_s - self.intercept_look_back)
+
         chosen_s = -1.0
-        s = step
+        best_deficit = float('inf')
+        best_s = max(step, self.intercept_min_lead)
+
+        s = s_start
         while s <= home_dist:
             ix = cx + ux * s
             iy = cy + uy * s
             pursuer_dist = math.hypot(px - ix, py - iy)
-            if pursuer_dist + self.intercept_arrival_margin <= s:
-                chosen_s = s
-                break
+
+            t_carrier = s / v_c
+            t_pursuer = pursuer_dist / v_p
+
+            # Track least-bad point (minimum time deficit) for the fallback.
+            deficit = t_pursuer - t_carrier
+            if deficit < best_deficit:
+                best_deficit = deficit
+                best_s = s
+
+            if use_time_model:
+                if t_pursuer + self.intercept_margin_time <= t_carrier:
+                    chosen_s = s
+                    break
+            else:
+                # Legacy distance-ratio mode (original behaviour, equal-speed assumption).
+                if pursuer_dist + self.intercept_arrival_margin <= s:
+                    chosen_s = s
+                    break
             s += step
 
         if chosen_s < 0.0:
-            chosen_s = min(home_dist, max(step, self.intercept_min_lead))
+            # Fallback: go to the point where we are closest to catching up.
+            chosen_s = min(home_dist, best_s)
 
         gx = cx + ux * chosen_s
         gy = cy + uy * chosen_s
@@ -705,7 +868,11 @@ class SlamFrontierExplorerCtf:
 
     def _send_pursuer_intercept(self, carrier_pose, pursuer_pose):
         home = self.homes[self.carrier_ns]
-        gx, gy, gyaw = self._make_interception_goal(carrier_pose, pursuer_pose, home)
+        gx, gy, gyaw = self._make_interception_goal(
+            carrier_pose, pursuer_pose, home, self._estimate_carrier_speed())
+        gx, gy = self._snap_chase_goal(gx, gy)
+        px, py, _ = pursuer_pose
+        gyaw = math.atan2(gy - py, gx - px)
         self._clients[self.pursuer_ns].send_goal(self._make_goal(gx, gy, gyaw))
         self._has_intercept_goal = True
         self._intercept_anchor = (carrier_pose[0], carrier_pose[1])
@@ -714,22 +881,41 @@ class SlamFrontierExplorerCtf:
     def _send_pursuer_direct_chase(self, carrier_pose, pursuer_pose):
         cx, cy, _ = carrier_pose
         px, py, _ = pursuer_pose
-        gyaw = math.atan2(cy - py, cx - px)
-        self._clients[self.pursuer_ns].send_goal(self._make_goal(cx, cy, gyaw))
+        gx, gy = self._snap_chase_goal(cx, cy)
+        gyaw = math.atan2(gy - py, gx - px)
+        self._clients[self.pursuer_ns].send_goal(self._make_goal(gx, gy, gyaw))
         self._has_intercept_goal = True
         self._intercept_anchor = (cx, cy)
         self._pursuer_was_succeeded = False
         self._last_direct_chase_sent = time.monotonic()
 
+    def _send_carrier_goal(self, wx, wy, yaw):
+        gx, gy = self._snap_chase_goal(wx, wy)
+        # #region agent log
+        _debug_log_cad0e0(
+            'slam_frontier_explorer_ctf.py:_send_carrier_goal',
+            'carrier goal sent',
+            'H2',
+            {
+                'carrierNs': self.carrier_ns,
+                'origX': wx,
+                'origY': wy,
+                'goalX': gx,
+                'goalY': gy,
+                'yaw': yaw,
+                'onHomeGoal': self._carrier_on_home_goal,
+            })
+        # #endregion
+        self._clients[self.carrier_ns].send_goal(self._make_goal(gx, gy, yaw))
+
     def _resend_carrier_goal(self):
         home = self.homes[self.carrier_ns]
         if self._carrier_on_home_goal:
-            self._clients[self.carrier_ns].send_goal(
-                self._make_goal(home[0], home[1], home[2]))
+            self._send_carrier_goal(home[0], home[1], home[2])
         elif self._clearance_goal is not None:
             gx, gy = self._clearance_goal
             gyaw = math.atan2(home[1] - gy, home[0] - gx)
-            self._clients[self.carrier_ns].send_goal(self._make_goal(gx, gy, gyaw))
+            self._send_carrier_goal(gx, gy, gyaw)
 
     def _init_chase(self):
         for client in self._clients.values():
@@ -740,21 +926,28 @@ class SlamFrontierExplorerCtf:
         ppose = self._get_robot_pose(self.pursuer_ns + '/base_footprint')
         if not cpose or not ppose:
             rospy.logwarn('CHASE: missing TF pose at start')
+            # #region agent log
+            _debug_log_cad0e0(
+                'slam_frontier_explorer_ctf.py:_init_chase',
+                'missing TF at chase start',
+                'H1',
+                {'hasCarrierPose': bool(cpose), 'hasPursuerPose': bool(ppose)})
+            # #endregion
             self._chase_initialized = True
             return
 
         home = self.homes[self.carrier_ns]
-        gx, gy, gyaw = self._make_chase_clearance_goal(cpose, home)
+        flag_xy = self._resolve_flag_position(self.carrier_ns)
+        gx, gy, gyaw = self._make_chase_clearance_goal(cpose, home, flag_xy)
         clearance_dist = math.hypot(gx - cpose[0], gy - cpose[1])
         self._clearance_goal = (gx, gy)
         self._carrier_on_home_goal = clearance_dist < self.chase_clearance_min_travel
 
         if self._carrier_on_home_goal:
-            self._clients[self.carrier_ns].send_goal(
-                self._make_goal(home[0], home[1], home[2]))
+            self._send_carrier_goal(home[0], home[1], home[2])
             target = 'base'
         else:
-            self._clients[self.carrier_ns].send_goal(self._make_goal(gx, gy, gyaw))
+            self._send_carrier_goal(gx, gy, gyaw)
             target = 'clearance'
 
         has_flag, flag_xy = self._get_fresh_flag_estimate(self.carrier_ns)
@@ -780,7 +973,35 @@ class SlamFrontierExplorerCtf:
             rospy.logwarn_throttle(3.0, 'CHASE: waiting for TF frames of robots...')
             return
 
+        self._update_carrier_vel(cpose[0], cpose[1])
+
         home = self.homes[self.carrier_ns]
+        # #region agent log
+        if not hasattr(self, '_last_carrier_debug_log'):
+            self._last_carrier_debug_log = 0.0
+        now_dbg = time.monotonic()
+        if now_dbg - self._last_carrier_debug_log >= 2.0:
+            self._last_carrier_debug_log = now_dbg
+            goal_x = home[0] if self._carrier_on_home_goal else (
+                self._clearance_goal[0] if self._clearance_goal else home[0])
+            goal_y = home[1] if self._carrier_on_home_goal else (
+                self._clearance_goal[1] if self._clearance_goal else home[1])
+            _debug_log_cad0e0(
+                'slam_frontier_explorer_ctf.py:_tick_chase',
+                'carrier chase tick',
+                'H2',
+                {
+                    'carrierNs': self.carrier_ns,
+                    'carrierX': cpose[0],
+                    'carrierY': cpose[1],
+                    'goalX': goal_x,
+                    'goalY': goal_y,
+                    'distToGoal': math.hypot(cpose[0] - goal_x, cpose[1] - goal_y),
+                    'onHomeGoal': self._carrier_on_home_goal,
+                    'mbTerminal': self._goal_terminal(self.carrier_ns),
+                    'mbSucceeded': self._goal_succeeded(self.carrier_ns),
+                })
+        # #endregion
         d = math.hypot(cpose[0] - ppose[0], cpose[1] - ppose[1])
         carrier_home_dist = math.hypot(cpose[0] - home[0], cpose[1] - home[1])
         rospy.loginfo_throttle(
@@ -804,8 +1025,7 @@ class SlamFrontierExplorerCtf:
             clearance_dist = math.hypot(cpose[0] - gx, cpose[1] - gy)
             if (clearance_dist <= self.chase_clearance_reached_dist or
                     self._goal_succeeded(self.carrier_ns)):
-                self._clients[self.carrier_ns].send_goal(
-                    self._make_goal(home[0], home[1], home[2]))
+                self._send_carrier_goal(home[0], home[1], home[2])
                 self._carrier_on_home_goal = True
                 self._last_carrier_progress_time = time.monotonic()
                 self._last_carrier_progress_home_dist = carrier_home_dist
@@ -831,13 +1051,31 @@ class SlamFrontierExplorerCtf:
             stuck_for = now - self._last_carrier_progress_time
             if (stuck_for >= self.carrier_home_stuck_timeout and
                     now - self._last_carrier_home_resend >= self.carrier_home_resend_cooldown):
-                self._resend_carrier_goal()
+                if not self._carrier_on_home_goal:
+                    self._send_carrier_goal(home[0], home[1], home[2])
+                    self._carrier_on_home_goal = True
+                    # #region agent log
+                    _debug_log_cad0e0(
+                        'slam_frontier_explorer_ctf.py:_tick_chase',
+                        'clearance stuck escalate',
+                        'H3',
+                        {
+                            'carrierNs': self.carrier_ns,
+                            'stuckForSec': stuck_for,
+                            'action': 'escalate_to_home',
+                        })
+                    # #endregion
+                    rospy.logwarn(
+                        'CTF CHASE: %s stuck on clearance for %.1f s; escalating to home goal',
+                        self.carrier_ns, stuck_for)
+                else:
+                    self._resend_carrier_goal()
+                    rospy.logwarn(
+                        'CTF CHASE: %s stuck ACTIVE for %.1f s at home dist %.2f m; re-sending goal',
+                        self.carrier_ns, stuck_for, carrier_home_dist)
                 self._last_carrier_home_resend = now
                 self._last_carrier_progress_time = now
                 self._last_carrier_progress_home_dist = carrier_home_dist
-                rospy.logwarn(
-                    'CTF CHASE: %s stuck ACTIVE for %.1f s at home dist %.2f m; re-sending goal',
-                    self.carrier_ns, stuck_for, carrier_home_dist)
 
         direct_chase = d <= self.intercept_direct_chase_distance
         if direct_chase:

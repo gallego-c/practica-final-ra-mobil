@@ -1,0 +1,164 @@
+<launch>
+  <!-- ==========================================================================
+       PRUEBA DE FASE 2 (PERSECUCIÓN) – MAPA ESTÁTICO CONOCIDO
+
+       Inicia el juego directamente en la fase de persecución (chase) sin pasar
+       por la fase de exploración/captura.  El carrier (robot1) aparece cerca de
+       la bandera y debe volver a su base; el pursuer (robot2) aparece en un punto
+       configurable del mapa libre de obstáculos.
+
+       Uso básico:
+         roslaunch ctf_navigation ctf_chase_test_static.launch
+
+       Con posición del pursuer personalizada:
+         roslaunch ctf_navigation ctf_chase_test_static.launch \
+           pursuer_x:=2.0 pursuer_y:=-1.5
+
+       Para obtener una posición aleatoria del pursuer usa el script auxiliar:
+         rosrun ctf_navigation random_free_spawn.py
+       y pega las coordenadas que imprime como argumentos pursuer_x / pursuer_y.
+
+       Puedes cambiar qué robot es el carrier con:
+         roslaunch ctf_navigation ctf_chase_test_static.launch \
+           initial_carrier_robot:=1
+       ========================================================================== -->
+
+  <arg name="local_planner"          default="dwa"/>
+  <arg name="rviz"                   default="true"/>
+
+  <!-- Flag position -->
+  <arg name="flag_x"                 default="-3.2"/>
+  <arg name="flag_y"                 default="3.2"/>
+
+  <!-- Carrier (robot1): spawns close to the flag so it needs to return home -->
+  <arg name="carrier_x"              default="-3.0"/>
+  <arg name="carrier_y"              default="3.0"/>
+  <arg name="carrier_yaw"            default="3.1416"/>
+
+  <!-- Pursuer (robot2): spawns at a free random-looking position.
+       Override with pursuer_x / pursuer_y from random_free_spawn.py. -->
+  <arg name="pursuer_x"              default="2.0"/>
+  <arg name="pursuer_y"              default="-2.5"/>
+  <arg name="pursuer_yaw"            default="1.5708"/>
+
+  <!-- Which robot is the initial carrier (0 = robot1, 1 = robot2) -->
+  <arg name="initial_carrier_robot"  default="0"/>
+
+  <!-- Intercept tuning (velocity-aware algorithm) -->
+  <arg name="pursuer_nav_speed"      default="0.20"/>
+  <arg name="carrier_speed_window"   default="4.0"/>
+  <arg name="intercept_margin_time"  default="1.5"/>
+
+  <!-- ── 1. Gazebo Simulation ──────────────────────────────────────────────── -->
+  <include file="$(find ctf_navigation)/launch/simulation.launch">
+    <arg name="robot1_x"   value="$(arg carrier_x)"/>
+    <arg name="robot1_y"   value="$(arg carrier_y)"/>
+    <arg name="robot1_yaw" value="$(arg carrier_yaw)"/>
+    <arg name="robot2_x"   value="$(arg pursuer_x)"/>
+    <arg name="robot2_y"   value="$(arg pursuer_y)"/>
+    <arg name="robot2_yaw" value="$(arg pursuer_yaw)"/>
+    <arg name="flag_x"     value="$(arg flag_x)"/>
+    <arg name="flag_y"     value="$(arg flag_y)"/>
+  </include>
+
+  <!-- ── 2. Inter-robot collision avoidance ───────────────────────────────── -->
+  <node pkg="ctf_navigation" type="robot_obstacle_publisher_node"
+        name="robot_obstacle_publisher" output="screen"/>
+
+  <!-- ── 3. Navigation (static map_server + move_base) ────────────────────── -->
+  <include file="$(find ctf_navigation)/launch/navigation.launch">
+    <arg name="local_planner" value="$(arg local_planner)"/>
+    <arg name="localization"  value="static"/>
+  </include>
+
+  <!-- ── 4. Flag detector (needed for flag_estimate subscription) ─────────── -->
+  <group ns="robot1">
+    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
+          output="screen">
+      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
+      <param name="camera_topic"            value="camera/rgb/image_raw"/>
+      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
+      <param name="base_frame"              value="robot1/base_footprint"/>
+      <param name="map_frame"               value="map"/>
+    </node>
+  </group>
+
+  <group ns="robot2">
+    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
+          output="screen">
+      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
+      <param name="camera_topic"            value="camera/rgb/image_raw"/>
+      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
+      <param name="base_frame"              value="robot2/base_footprint"/>
+      <param name="map_frame"               value="map"/>
+    </node>
+  </group>
+
+  <!-- ── 5. CTF Coordinator – start directly in chase phase ──────────────── -->
+  <node pkg="ctf_navigation" type="ctf_coordinator_node" name="ctf_coordinator"
+        output="screen">
+    <param name="map_frame"       value="map"/>
+    <param name="map_topic"       value="/map"/>
+    <param name="detector_node"   value="flag_detector"/>
+    <param name="flag_x"          value="$(arg flag_x)"/>
+    <param name="flag_y"          value="$(arg flag_y)"/>
+
+    <param name="robot1_ns"         value="robot1"/>
+    <param name="robot2_ns"         value="robot2"/>
+    <param name="robot1_base_frame" value="robot1/base_footprint"/>
+    <param name="robot2_base_frame" value="robot2/base_footprint"/>
+
+    <param name="robot1_base_x"   value="-3.0"/>
+    <param name="robot1_base_y"   value="-3.0"/>
+    <param name="robot1_base_yaw" value="0.0"/>
+    <param name="robot2_base_x"   value="3.0"/>
+    <param name="robot2_base_y"   value="3.0"/>
+    <param name="robot2_base_yaw" value="3.1416"/>
+
+    <!-- Skip exploration: jump straight to chase -->
+    <param name="start_phase"            value="chase"/>
+    <param name="initial_carrier_robot"  value="$(arg initial_carrier_robot)"/>
+
+    <!-- Velocity-aware intercept parameters -->
+    <param name="pursuer_nav_speed"     value="$(arg pursuer_nav_speed)"/>
+    <param name="carrier_speed_window"  value="$(arg carrier_speed_window)"/>
+    <param name="carrier_min_speed"     value="0.05"/>
+    <param name="intercept_margin_time" value="$(arg intercept_margin_time)"/>
+    <param name="intercept_look_back"   value="0.5"/>
+    <param name="goal_snap_clearance"       value="0.30"/>
+    <param name="goal_snap_search_radius"   value="2.0"/>
+    <param name="chase_startup_delay"       value="5.0"/>
+
+    <!-- Intercept / chase tuning (kept from ctf_game.launch defaults) -->
+    <param name="catch_distance"                    value="0.65"/>
+    <param name="waypoint_reached_dist"             value="0.55"/>
+    <param name="chase_flag_clearance"              value="0.75"/>
+    <param name="chase_clearance_reached_dist"      value="0.20"/>
+    <param name="chase_clearance_min_travel"        value="0.25"/>
+    <param name="intercept_enabled"                 value="true"/>
+    <param name="intercept_direct_chase_distance"   value="1.25"/>
+    <param name="intercept_arrival_margin"          value="0.30"/>
+    <param name="intercept_step"                    value="0.25"/>
+    <param name="intercept_min_lead"                value="1.0"/>
+    <param name="intercept_carrier_move_threshold"  value="1.25"/>
+    <param name="carrier_home_resend_cooldown"      value="3.0"/>
+    <param name="carrier_home_stuck_timeout"        value="6.0"/>
+    <param name="carrier_home_progress_threshold"   value="0.10"/>
+    <param name="direct_chase_refresh_sec"          value="2.0"/>
+    <param name="direct_chase_carrier_move"         value="0.25"/>
+    <param name="capture_pause_sec"                 value="1.0"/>
+    <param name="flag_capture_distance"             value="0.40"/>
+    <param name="flag_standoff_distance"            value="0.20"/>
+    <param name="flag_memory_timeout"               value="5.0"/>
+    <param name="rate_hz"                           value="5.0"/>
+    <param name="explore_step"                      value="1.0"/>
+    <param name="explore_clearance"                 value="0.30"/>
+    <param name="map_wait_timeout"                  value="60.0"/>
+    <param name="trail_min_distance"                value="0.05"/>
+    <param name="trail_max_poses"                   value="2000"/>
+  </node>
+
+  <!-- ── 6. RViz ──────────────────────────────────────────────────────────── -->
+  <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz"
+        args="-d $(find ctf_navigation)/rviz/ctf_game.rviz"/>
+</launch>

@@ -63,6 +63,7 @@ target_link_libraries(ctf_vision ${OpenCV_LIBS})
 # ── Librería de juego (exploración + agente) ──────────────────────────────────
 add_library(ctf_game
   src/game/exploration.cpp
+  src/game/map_utils.cpp
   src/game/robot_agent.cpp
 )
 target_link_libraries(ctf_game ${catkin_LIBRARIES})
@@ -110,6 +111,7 @@ install(DIRECTORY launch params rviz worlds models maps
 # SLAM / CTF Python nodes
 catkin_install_python(PROGRAMS
   scripts/laser_obstacle_filter.py
+  scripts/random_free_spawn.py
   scripts/robot_coordinator.py
   scripts/robot_obstacle_publisher.py
   scripts/slam_frontier_explorer.py

@@ -53,14 +53,19 @@ private:
   int v_samples_;
   int omega_samples_;
   int max_iterations_;
-  double path_follow_weight_;
-  double proximity_weight_;
 
   bool initialized_;
   bool goal_reached_;
 
   std::vector<geometry_msgs::PoseStamped> global_plan_;
   geometry_msgs::PoseStamped goal_pose_;
+
+  double path_follow_weight_;
+  double proximity_weight_;
+
+  int escape_mode_;
+  int rotation_sign_;
+  ros::Time last_escape_switch_;
 
   costmap_2d::Costmap2DROS* costmap_ros_;
   tf2_ros::Buffer* tf_;
