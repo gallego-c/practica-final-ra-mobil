@@ -137,7 +137,7 @@ private:
       return;
     }
 
-    processBgrFrame(bgr);
+    processBgrFrame(bgr, msg->header.stamp);
   }
 
   void onCompressedImage(const sensor_msgs::CompressedImage::ConstPtr& msg)
@@ -154,11 +154,17 @@ private:
       return;
     }
 
-    processBgrFrame(bgr);
+    processBgrFrame(bgr, msg->header.stamp);
   }
 
-  void processBgrFrame(const cv::Mat& bgr)
+  void processBgrFrame(const cv::Mat& bgr, const ros::Time& stamp)
   {
+    if (!stamp.isZero() && (ros::Time::now() - stamp).toSec() > 1.0)
+    {
+      ROS_WARN_THROTTLE(2.0, "Stale image received (age = %.2f s), ignoring", (ros::Time::now() - stamp).toSec());
+      return;
+    }
+
     const auto det = ctf_navigation::vision::detectRedBlob(bgr, cfg_.red);
 
     std_msgs::Bool found_msg;
@@ -172,7 +178,7 @@ private:
           det.centroid_x, bgr.cols, cfg_.horizontal_fov);
       ROS_INFO_THROTTLE(1.0, "Red flag candidate: area=%.0f cx=%.0f bearing=%.2f rad",
                         det.area, det.centroid_x, bearing);
-      estimate = estimateFlagPose(bearing);
+      estimate = estimateFlagPose(bearing, stamp);
       if (estimate)
       {
         estimate_pub_.publish(*estimate);
@@ -191,7 +197,7 @@ private:
     }
   }
 
-  boost::optional<geometry_msgs::PoseStamped> estimateFlagPose(double bearing)
+  boost::optional<geometry_msgs::PoseStamped> estimateFlagPose(double bearing, const ros::Time& stamp)
   {
     sensor_msgs::LaserScan scan;
     {
@@ -200,6 +206,15 @@ private:
       {
         ROS_WARN_THROTTLE(5.0, "Flag visible but no LaserScan yet");
         return boost::none;
+      }
+      if (!stamp.isZero() && !last_scan_.header.stamp.isZero())
+      {
+        double scan_age = std::abs((last_scan_.header.stamp - stamp).toSec());
+        if (scan_age > 1.0)
+        {
+          ROS_WARN_THROTTLE(2.0, "LaserScan and image are unsynchronized (diff = %.2f s)", scan_age);
+          return boost::none;
+        }
       }
       scan = last_scan_;
     }
@@ -215,7 +230,7 @@ private:
 
     geometry_msgs::PoseStamped pose_base;
     pose_base.header.frame_id = cfg_.base_frame;
-    pose_base.header.stamp = ros::Time(0);
+    pose_base.header.stamp = stamp;
     pose_base.pose.position.x = *range * std::cos(bearing);
     pose_base.pose.position.y = *range * std::sin(bearing);
     pose_base.pose.orientation.w = 1.0;

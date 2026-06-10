@@ -182,6 +182,7 @@ class SlamFrontierExplorerCtf:
         self.flag_estimate_time = {'robot1': 0.0, 'robot2': 0.0}
         self.last_known_flag_xy = None
         self.flag_lock = threading.Lock()
+        self._close_to_flag_since = {}
 
         # Per-robot search sub-state during EXPLORING phase:
         # EXPLORING | PURSUING_FLAG (own camera, can capture) | APPROACHING_SHARED (teammate estimate)
@@ -253,6 +254,14 @@ class SlamFrontierExplorerCtf:
         rospy.sleep(self.startup_delay)
         if not self._wait_for_all_move_base():
             raise rospy.ROSException('move_base not ready for all robots')
+
+        # Clear any transient flag detections from spawning
+        with self.flag_lock:
+            for ns in ('robot1', 'robot2'):
+                self.flag_estimate[ns] = None
+                self.flag_estimate_time[ns] = 0.0
+                self.flag_found[ns] = False
+                self._flag_visible_since.pop(ns, None)
 
         # Publish initial capture state (False)
         self._flag_captured_pub.publish(Bool(data=False))
@@ -400,32 +409,48 @@ class SlamFrontierExplorerCtf:
     def _find_first_capture_candidate(self):
         """Capture only when close enough (map distance) AND camera sees the flag."""
         candidates = []
+        now = time.monotonic()
         for ns in ('robot1', 'robot2'):
             with self._state_lock:
                 if self._search_state.get(ns) != 'PURSUING_FLAG':
+                    self._close_to_flag_since.pop(ns, None)
                     continue
 
             has_own, flag_xy = self._has_fresh_flag_estimate(ns)
             if not has_own or flag_xy is None:
+                self._close_to_flag_since.pop(ns, None)
                 continue
 
             with self.flag_lock:
                 if not self.flag_found.get(ns, False):
+                    self._close_to_flag_since.pop(ns, None)
                     continue
                 age = rospy.Time.now().to_sec() - self.flag_estimate_time[ns]
             if age > 2.0:
+                self._close_to_flag_since.pop(ns, None)
                 continue
 
             pose = self._get_robot_pose(ns + '/base_footprint')
             if pose is None:
+                self._close_to_flag_since.pop(ns, None)
                 continue
 
             d_flag = math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
             if d_flag > self.flag_capture_distance:
+                self._close_to_flag_since.pop(ns, None)
                 continue
 
             # Debounce: require flag visible briefly (not capture from one noisy frame)
             if self._flag_visible_duration(ns) < 0.25:
+                continue
+
+            # Enforce that the robot must be within capture distance for at least 2.0 seconds
+            if ns not in self._close_to_flag_since:
+                self._close_to_flag_since[ns] = now
+
+            close_duration = now - self._close_to_flag_since[ns]
+            if close_duration < 2.0:
+                rospy.loginfo_throttle(1.0, '%s: close to flag (dist=%.2f m) for %.2f/2.0 s', ns, d_flag, close_duration)
                 continue
 
             candidates.append((ns, flag_xy, d_flag))
@@ -747,20 +772,34 @@ class SlamFrontierExplorerCtf:
         if travel < 0.20:
             return None
 
-        snapped = self._snap_goal_to_free(grid, tx, ty)
-        if snapped is not None:
-            tx, ty = snapped
-            mx, my = world_to_map(tx, ty, grid.info)
-            if self._cell_has_clearance(grid, mx, my):
-                yaw = math.atan2(ty - robot_pose[1], tx - robot_pose[0])
-                return tx, ty, yaw
+        # 1. If target is close enough, we try to go direct
+        if travel <= 2.0:
+            snapped = self._snap_goal_to_free(grid, tx, ty)
+            if snapped is not None:
+                tx, ty = snapped
+                mx, my = world_to_map(tx, ty, grid.info)
+                if self._cell_has_clearance(grid, mx, my):
+                    yaw = math.atan2(ty - robot_pose[1], tx - robot_pose[0])
+                    return tx, ty, yaw
 
+        # 2. If target is far or direct failed, and we allow partial, find a waypoint toward target
         if allow_partial:
             step = self._find_map_goal_toward(grid, robot_pose, target_xy)
             if step is not None:
                 sx, sy = step
                 yaw = math.atan2(sy - robot_pose[1], sx - robot_pose[0])
                 return sx, sy, yaw
+
+        # 3. Fallback: if partial failed or target is far and direct snap wasn't attempted, try direct
+        if travel > 2.0:
+            snapped = self._snap_goal_to_free(grid, tx, ty)
+            if snapped is not None:
+                tx, ty = snapped
+                mx, my = world_to_map(tx, ty, grid.info)
+                if self._cell_has_clearance(grid, mx, my):
+                    yaw = math.atan2(ty - robot_pose[1], tx - robot_pose[0])
+                    return tx, ty, yaw
+
         return None
 
     def _send_carrier_goal(self, wx, wy, yaw, tag=''):
@@ -1413,6 +1452,16 @@ class SlamFrontierExplorerCtf:
                         self.carrier_ns)
 
         now = time.monotonic()
+        if self._carrier_on_home_goal:
+            carrier_goal_done = self._goal_succeeded(self.carrier_ns)
+            if carrier_goal_done and carrier_home_dist > self.waypoint_reached_dist:
+                self._resend_carrier_goal()
+                self._last_carrier_home_resend = now
+                self._last_carrier_progress_time = now
+                self._last_carrier_progress_home_dist = carrier_home_dist
+                rospy.loginfo('CTF CHASE: %s goal updated for next intermediate home waypoint',
+                              self.carrier_ns)
+
         if self._goal_terminal(self.carrier_ns) and not self._goal_succeeded(self.carrier_ns):
             if now - self._last_carrier_home_resend >= self.carrier_home_resend_cooldown:
                 self._resend_carrier_goal()
@@ -1447,6 +1496,7 @@ class SlamFrontierExplorerCtf:
                 cpose[1] - self._intercept_anchor[1])
         pursuer_failed = (self._goal_terminal(self.pursuer_ns) and
                           not self._goal_succeeded(self.pursuer_ns))
+        pursuer_succeeded = self._goal_succeeded(self.pursuer_ns)
         pursuer_state = self._clients[self.pursuer_ns].get_state()
         pursuer_active = pursuer_state in (
             GoalStatus.ACTIVE, GoalStatus.PENDING, GoalStatus.RECALLING)
@@ -1462,6 +1512,7 @@ class SlamFrontierExplorerCtf:
         refresh_pursuer = chase_ready and (
             not self._has_intercept_goal or
             pursuer_failed or
+            pursuer_succeeded or
             pursuer_stuck or
             carrier_move >= self.direct_chase_carrier_move)
         if refresh_pursuer:
