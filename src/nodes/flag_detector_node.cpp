@@ -176,7 +176,7 @@ private:
     {
       const double bearing = ctf_navigation::vision::bearingFromCentroid(
           det.centroid_x, bgr.cols, cfg_.horizontal_fov);
-      ROS_INFO_THROTTLE(1.0, "Red flag candidate: area=%.0f cx=%.0f bearing=%.2f rad",
+      ROS_DEBUG_THROTTLE(1.0, "Red flag candidate: area=%.0f cx=%.0f bearing=%.2f rad",
                         det.area, det.centroid_x, bearing);
       estimate = estimateFlagPose(bearing, stamp);
       if (estimate)

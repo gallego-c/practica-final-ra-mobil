@@ -10,6 +10,7 @@
   <arg name="robot2_init_x" default="0.0"/>
   <arg name="robot2_init_y" default="0.0"/>
   <arg name="robot2_init_yaw" default="0.0"/>
+  <arg name="quiet_slam" default="true"/>
 
   <!-- Laser scan filters to remove the other robot's body from GMapping and move_base -->
   <group ns="robot1">
@@ -33,7 +34,7 @@
   <!-- Each robot builds its own map frame. Keeping these frames separate avoids
        two gmapping nodes publishing conflicting map -> odom transforms. -->
   <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping"
-        ns="robot1" output="screen">
+        ns="robot1" output="$(eval 'log' if arg('quiet_slam') else 'screen')">
     <remap from="scan" to="/robot1/scan_filtered"/>
     <rosparam file="$(find ctf_navigation)/params/gmapping_robot1.yaml"
               command="load"/>
@@ -43,7 +44,7 @@
   </node>
 
   <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping"
-        ns="robot2" output="screen">
+        ns="robot2" output="$(eval 'log' if arg('quiet_slam') else 'screen')">
     <remap from="scan" to="/robot2/scan_filtered"/>
     <rosparam file="$(find ctf_navigation)/params/gmapping_robot2.yaml"
               command="load"/>

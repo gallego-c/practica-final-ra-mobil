@@ -26,6 +26,8 @@
   <arg name="robot2_map_init_y" default="0.0"/>
   <arg name="robot2_map_init_yaw" default="0.0"/>
 
+  <arg name="quiet_slam" default="true"/>
+
   <!-- 1. Gazebo simulation: spawns robot1, robot2 and the flag -->
   <include file="$(find ctf_navigation)/launch/simulation.launch">
     <arg name="world" value="$(arg world)"/>
@@ -43,6 +45,7 @@
   <include file="$(find ctf_navigation)/launch/shared_slam.launch">
     <arg name="world_frame" value="$(arg world_frame)"/>
     <arg name="merged_map_topic" value="$(arg merged_map_topic)"/>
+    <arg name="quiet_slam" value="$(arg quiet_slam)"/>
     <arg name="robot1_init_x" value="$(arg robot1_map_init_x)"/>
     <arg name="robot1_init_y" value="$(arg robot1_map_init_y)"/>
     <arg name="robot1_init_yaw" value="$(arg robot1_map_init_yaw)"/>
@@ -112,6 +115,9 @@
     <param name="move_base_timeout" value="120.0"/>
     <param name="idle_frontier_cycles" value="3"/>
 
+    <!-- log_mode: verbose | brief (phases + goals + capture/chase only) -->
+    <param name="log_mode" value="brief"/>
+
     <!-- CTF: standoff must account for flag cylinder (r=0.03) + costmap inflation -->
     <param name="flag_collision_radius" value="0.03"/>
     <param name="flag_standoff_distance" value="0.20"/>
@@ -135,6 +141,7 @@
     <param name="capture_pause_sec" value="3.0"/>
     <param name="flag_memory_timeout" value="5.0"/>
     <param name="flag_support_standoff" value="1.20"/>
+    <param name="flag_global_plan_min_dist" value="1.50"/>
     <param name="waypoint_reached_dist" value="0.55"/>
     <param name="intercept_enabled" value="true"/>
     <param name="intercept_direct_chase_distance" value="1.25"/>
