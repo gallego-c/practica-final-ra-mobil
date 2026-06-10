@@ -112,8 +112,8 @@
     <param name="move_base_timeout" value="120.0"/>
     <param name="idle_frontier_cycles" value="3"/>
 
-    <!-- CTF: standoff must account for flag cylinder (r=0.12) + costmap inflation -->
-    <param name="flag_collision_radius" value="0.12"/>
+    <!-- CTF: standoff must account for flag cylinder (r=0.03) + costmap inflation -->
+    <param name="flag_collision_radius" value="0.03"/>
     <param name="flag_standoff_distance" value="0.20"/>
     <param name="flag_capture_margin" value="0.08"/>
     <param name="flag_capture_distance" value="0.60"/>

@@ -1864,7 +1864,6 @@ class SlamFrontierExplorerCtf:
         os._exit(0)
 
 
-
 def main():
     try:
         SlamFrontierExplorerCtf().run()
