@@ -97,6 +97,7 @@ class RobotCoordinator:
         self.yield_start_time = None
         self.yield_cooldown_until = None
         self.flag_captured = False
+        self.in_capture_phase = False
 
         # Cached raw cmd_vel commands
         self.raw_cmd1 = Twist()
@@ -106,12 +107,18 @@ class RobotCoordinator:
         self.cmd_sub1 = rospy.Subscriber('/robot1/cmd_vel_raw', Twist, self.cmd_cb1, queue_size=1)
         self.cmd_sub2 = rospy.Subscriber('/robot2/cmd_vel_raw', Twist, self.cmd_cb2, queue_size=1)
         self.flag_captured_sub = rospy.Subscriber('/ctf/flag_captured', Bool, self.flag_captured_cb, queue_size=1)
+        self.capture_phase_sub = rospy.Subscriber('/ctf/capture_phase', Bool, self.capture_phase_cb, queue_size=1)
 
         rospy.loginfo('RobotCoordinator: initialized. Priority: robot1 > robot2')
 
     def flag_captured_cb(self, msg):
         self.flag_captured = msg.data
         if self.flag_captured:
+            self.yielding_robot = None
+
+    def capture_phase_cb(self, msg):
+        self.in_capture_phase = msg.data
+        if self.in_capture_phase:
             self.yielding_robot = None
 
     def _yield_twist(self, ns):
@@ -162,7 +169,7 @@ class RobotCoordinator:
                 dist = math.hypot(p1[0] - p2[0], p1[1] - p2[1])
 
             # Priority yielding state machine
-            if dist is not None and not self.flag_captured:
+            if dist is not None and not self.flag_captured and not self.in_capture_phase:
                 if self.yielding_robot is None:
                     # Only yield if we are not in a cooldown period
                     in_cooldown = self.yield_cooldown_until and rospy.Time.now() < self.yield_cooldown_until
@@ -181,7 +188,7 @@ class RobotCoordinator:
                         if is_timeout:
                             self.yield_cooldown_until = rospy.Time.now() + rospy.Duration(YIELD_COOLDOWN)
                             rospy.logwarn(f'Entering yield cooldown for {YIELD_COOLDOWN}s')
-            elif self.flag_captured:
+            elif self.flag_captured or self.in_capture_phase:
                 self.yielding_robot = None
                 self.yield_start_time = None
 
@@ -199,7 +206,8 @@ class RobotCoordinator:
                 pos = poses.get(source_ns)
                 if pos is None:
                     continue
-                pub.publish(_make_cloud(self.target_frame, pos[0], pos[1], self.robot_radius))
+                radius = 0.20 if self.in_capture_phase else self.robot_radius
+                pub.publish(_make_cloud(self.target_frame, pos[0], pos[1], radius))
 
             rate.sleep()
 

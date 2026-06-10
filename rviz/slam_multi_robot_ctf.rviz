@@ -23,14 +23,14 @@ Visualization Manager:
       Draw Behind: true
       Name: SLAM map robot1
       Topic: /robot1/map
-      Value: true
+      Value: false
     - Alpha: 0.45
       Class: rviz/Map
       Color Scheme: map
       Draw Behind: true
       Name: SLAM map robot2
       Topic: /robot2/map
-      Value: true
+      Value: false
     - Class: rviz/TF
       Frame Timeout: 15
       Marker Scale: 0.5
@@ -88,7 +88,7 @@ Visualization Manager:
       Draw Behind: false
       Name: Costmap global robot1
       Topic: /robot1/move_base/global_costmap/costmap
-      Value: true
+      Value: false
     - Alpha: 0.6
       Class: rviz/Map
       Color Scheme: costmap
@@ -102,7 +102,7 @@ Visualization Manager:
       Draw Behind: false
       Name: Costmap global robot2
       Topic: /robot2/move_base/global_costmap/costmap
-      Value: true
+      Value: false
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
@@ -118,7 +118,7 @@ Visualization Manager:
       Enabled: true
       Name: Global plan robot1 (DWA)
       Topic: /robot1/move_base/DWAPlannerROS/global_plan
-      Value: true
+      Value: false
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
@@ -142,7 +142,7 @@ Visualization Manager:
       Enabled: true
       Name: Global plan robot2 (DWA)
       Topic: /robot2/move_base/DWAPlannerROS/global_plan
-      Value: true
+      Value: false
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path

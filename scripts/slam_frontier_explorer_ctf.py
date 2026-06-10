@@ -124,7 +124,7 @@ class SlamFrontierExplorerCtf:
         self.capture_pause_sec = float(rospy.get_param('~capture_pause_sec', 3.0))
         self.flag_memory_timeout = float(rospy.get_param('~flag_memory_timeout', 120.0))
         self.flag_support_standoff = float(
-            rospy.get_param('~flag_support_standoff', 1.20))
+            rospy.get_param('~flag_support_standoff', 2.20))
         self.flag_global_plan_min_dist = float(
             rospy.get_param('~flag_global_plan_min_dist', 1.50))
         self.waypoint_reached_dist = float(rospy.get_param('~waypoint_reached_dist', 0.55))
@@ -240,6 +240,8 @@ class SlamFrontierExplorerCtf:
         self._done_pub = rospy.Publisher('/slam_exploration/complete', Bool, queue_size=1, latch=True)
         self._flag_captured_pub = rospy.Publisher('/ctf/flag_captured', Bool, queue_size=1, latch=True)
         self._marker_pub = rospy.Publisher('/ctf/markers', MarkerArray, queue_size=1, latch=True)
+        self._capture_phase_pub = rospy.Publisher('/ctf/capture_phase', Bool, queue_size=1, latch=True)
+        self._capture_phase_pub.publish(Bool(data=False))
 
         self._tf_buffer = tf2_ros.Buffer()
         tf2_ros.TransformListener(self._tf_buffer)
@@ -540,6 +542,13 @@ class SlamFrontierExplorerCtf:
                     self._search_state[ns] = 'EXPLORING'
                     self._clear_pursuit_tracking(ns)
                     self._clients[ns].cancel_all_goals()
+
+        in_cap = False
+        with self._state_lock:
+            for ns in ('robot1', 'robot2'):
+                if self._search_state.get(ns) in ('PURSUING_FLAG', 'APPROACHING_SHARED'):
+                    in_cap = True
+        self._capture_phase_pub.publish(Bool(data=in_cap))
 
     def _find_first_capture_candidate(self):
         """Capture only when close enough (map distance) AND camera sees the flag."""
@@ -1243,6 +1252,7 @@ class SlamFrontierExplorerCtf:
             return
         d_flag = math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
         if support_only and d_flag <= self.flag_support_standoff:
+            client.cancel_all_goals()
             return
         mb_state = client.get_state()
         now = time.monotonic()
@@ -1741,6 +1751,7 @@ class SlamFrontierExplorerCtf:
         self._pursuer_was_succeeded = False
         self._carrier_on_home_goal = False
         self._clearance_goal = None
+        self._capture_phase_pub.publish(Bool(data=False))
 
     def _capture_flag(self, ns, flag_xy):
         with self._capture_lock:
