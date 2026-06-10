@@ -47,7 +47,7 @@ INFLATION_RADIUS = 0.35
 # Default exclusion zone centres: flag, carrier spawn, both home bases.
 DEFAULT_EXCLUSIONS = [
     (-3.2,  3.2),   # flag
-    (-3.0,  3.0),   # carrier spawn (near flag)
+    (-1.5,  2.5),   # carrier spawn (near flag)
     (-3.0, -3.0),   # robot1 home base
     ( 3.0,  3.0),   # robot2 home base
 ]

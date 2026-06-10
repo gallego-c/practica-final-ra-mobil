@@ -31,10 +31,6 @@ NEIGHBORS_4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
 # #region agent log
 _DEBUG_LOG_PATH = os.path.join(
     rospkg.RosPack().get_path('ctf_navigation'), 'debug-36a89d.log')
-_DEBUG_LOG_PATH_CAD0E0 = os.path.join(
-    rospkg.RosPack().get_path('ctf_navigation'), 'debug-cad0e0.log')
-
-
 def _agent_debug_log(location, message, hypothesis_id, data):
     try:
         payload = {
@@ -46,22 +42,6 @@ def _agent_debug_log(location, message, hypothesis_id, data):
             'timestamp': int(time.time() * 1000),
         }
         with open(_DEBUG_LOG_PATH, 'a') as log_file:
-            log_file.write(json.dumps(payload) + '\n')
-    except Exception:
-        pass
-
-
-def _debug_log_cad0e0(location, message, hypothesis_id, data):
-    try:
-        payload = {
-            'sessionId': 'cad0e0',
-            'location': location,
-            'message': message,
-            'hypothesisId': hypothesis_id,
-            'data': data,
-            'timestamp': int(time.time() * 1000),
-        }
-        with open(_DEBUG_LOG_PATH_CAD0E0, 'a') as log_file:
             log_file.write(json.dumps(payload) + '\n')
     except Exception:
         pass
@@ -891,21 +871,6 @@ class SlamFrontierExplorerCtf:
 
     def _send_carrier_goal(self, wx, wy, yaw):
         gx, gy = self._snap_chase_goal(wx, wy)
-        # #region agent log
-        _debug_log_cad0e0(
-            'slam_frontier_explorer_ctf.py:_send_carrier_goal',
-            'carrier goal sent',
-            'H2',
-            {
-                'carrierNs': self.carrier_ns,
-                'origX': wx,
-                'origY': wy,
-                'goalX': gx,
-                'goalY': gy,
-                'yaw': yaw,
-                'onHomeGoal': self._carrier_on_home_goal,
-            })
-        # #endregion
         self._clients[self.carrier_ns].send_goal(self._make_goal(gx, gy, yaw))
 
     def _resend_carrier_goal(self):
@@ -926,13 +891,6 @@ class SlamFrontierExplorerCtf:
         ppose = self._get_robot_pose(self.pursuer_ns + '/base_footprint')
         if not cpose or not ppose:
             rospy.logwarn('CHASE: missing TF pose at start')
-            # #region agent log
-            _debug_log_cad0e0(
-                'slam_frontier_explorer_ctf.py:_init_chase',
-                'missing TF at chase start',
-                'H1',
-                {'hasCarrierPose': bool(cpose), 'hasPursuerPose': bool(ppose)})
-            # #endregion
             self._chase_initialized = True
             return
 
@@ -976,32 +934,6 @@ class SlamFrontierExplorerCtf:
         self._update_carrier_vel(cpose[0], cpose[1])
 
         home = self.homes[self.carrier_ns]
-        # #region agent log
-        if not hasattr(self, '_last_carrier_debug_log'):
-            self._last_carrier_debug_log = 0.0
-        now_dbg = time.monotonic()
-        if now_dbg - self._last_carrier_debug_log >= 2.0:
-            self._last_carrier_debug_log = now_dbg
-            goal_x = home[0] if self._carrier_on_home_goal else (
-                self._clearance_goal[0] if self._clearance_goal else home[0])
-            goal_y = home[1] if self._carrier_on_home_goal else (
-                self._clearance_goal[1] if self._clearance_goal else home[1])
-            _debug_log_cad0e0(
-                'slam_frontier_explorer_ctf.py:_tick_chase',
-                'carrier chase tick',
-                'H2',
-                {
-                    'carrierNs': self.carrier_ns,
-                    'carrierX': cpose[0],
-                    'carrierY': cpose[1],
-                    'goalX': goal_x,
-                    'goalY': goal_y,
-                    'distToGoal': math.hypot(cpose[0] - goal_x, cpose[1] - goal_y),
-                    'onHomeGoal': self._carrier_on_home_goal,
-                    'mbTerminal': self._goal_terminal(self.carrier_ns),
-                    'mbSucceeded': self._goal_succeeded(self.carrier_ns),
-                })
-        # #endregion
         d = math.hypot(cpose[0] - ppose[0], cpose[1] - ppose[1])
         carrier_home_dist = math.hypot(cpose[0] - home[0], cpose[1] - home[1])
         rospy.loginfo_throttle(
@@ -1054,17 +986,6 @@ class SlamFrontierExplorerCtf:
                 if not self._carrier_on_home_goal:
                     self._send_carrier_goal(home[0], home[1], home[2])
                     self._carrier_on_home_goal = True
-                    # #region agent log
-                    _debug_log_cad0e0(
-                        'slam_frontier_explorer_ctf.py:_tick_chase',
-                        'clearance stuck escalate',
-                        'H3',
-                        {
-                            'carrierNs': self.carrier_ns,
-                            'stuckForSec': stuck_for,
-                            'action': 'escalate_to_home',
-                        })
-                    # #endregion
                     rospy.logwarn(
                         'CTF CHASE: %s stuck on clearance for %.1f s; escalating to home goal',
                         self.carrier_ns, stuck_for)

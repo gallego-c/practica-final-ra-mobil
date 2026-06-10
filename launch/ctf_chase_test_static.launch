@@ -30,10 +30,10 @@
   <arg name="flag_x"                 default="-3.2"/>
   <arg name="flag_y"                 default="3.2"/>
 
-  <!-- Carrier (robot1): spawns close to the flag so it needs to return home -->
-  <arg name="carrier_x"              default="-3.0"/>
-  <arg name="carrier_y"              default="3.0"/>
-  <arg name="carrier_yaw"            default="3.1416"/>
+  <!-- Carrier (robot1): spawns near the flag but with clearance (~1.8 m from flag) -->
+  <arg name="carrier_x"              default="-1.5"/>
+  <arg name="carrier_y"              default="2.5"/>
+  <arg name="carrier_yaw"            default="-1.83"/>
 
   <!-- Pursuer (robot2): spawns at a free random-looking position.
        Override with pursuer_x / pursuer_y from random_free_spawn.py. -->

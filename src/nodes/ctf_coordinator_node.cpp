@@ -6,16 +6,13 @@
 #include <cstddef>
 #include <cmath>
 #include <deque>
-#include <fstream>
 #include <limits>
-#include <sstream>
 #include <string>
 
 #include <boost/optional.hpp>
 
 #include <nav_msgs/OccupancyGrid.h>
 #include <nav_msgs/Path.h>
-#include <ros/package.h>
 #include <ros/ros.h>
 #include <std_msgs/Bool.h>
 #include <std_msgs/String.h>
@@ -31,31 +28,6 @@
 
 namespace
 {
-
-// #region agent log
-void agentDebugLog(const char* location,
-                   const char* message,
-                   const char* hypothesis_id,
-                   const std::ostringstream& data)
-{
-  try
-  {
-    const std::string path = ros::package::getPath("ctf_navigation") + "/debug-cad0e0.log";
-    std::ofstream file(path, std::ios::app);
-    if (!file.is_open())
-    {
-      return;
-    }
-    const auto ts = static_cast<long long>(ros::WallTime::now().toSec() * 1000.0);
-    file << "{\"sessionId\":\"cad0e0\",\"location\":\"" << location << "\",\"message\":\""
-         << message << "\",\"hypothesisId\":\"" << hypothesis_id << "\",\"data\":" << data.str()
-         << ",\"timestamp\":" << ts << "}\n";
-  }
-  catch (...)
-  {
-  }
-}
-// #endregion
 
 struct CoordinatorConfig
 {
@@ -204,15 +176,6 @@ public:
               : 0;
       ROS_INFO("CTF DIRECT CHASE START: skipping search; robot %d (%s) is the carrier",
                carrier_idx, agent(static_cast<std::size_t>(carrier_idx)).ns().c_str());
-
-      // #region agent log
-      {
-        std::ostringstream data;
-        data << "{\"carrierIdx\":" << carrier_idx << ",\"carrierNs\":\""
-             << agent(static_cast<std::size_t>(carrier_idx)).ns() << "\"}";
-        agentDebugLog("ctf_coordinator_node.cpp:run", "chase phase entry", "H1", data);
-      }
-      // #endregion
 
       const ros::Time map_wait_start = ros::Time::now();
       ros::Rate map_rate(10.0);
@@ -763,20 +726,7 @@ private:
     VelocityEstimator carrier_vel(cfg_.carrier_speed_window);
 
     const auto sendCarrierGoal = [&](double x, double y, double yaw) {
-      const double orig_x = x;
-      const double orig_y = y;
-      const bool snapped = snapChaseGoal(x, y);
-      // #region agent log
-      {
-        std::ostringstream data;
-        data << "{\"carrierNs\":\"" << carrier.ns() << "\",\"origX\":" << orig_x
-             << ",\"origY\":" << orig_y << ",\"goalX\":" << x << ",\"goalY\":" << y
-             << ",\"yaw\":" << yaw << ",\"snapped\":" << (snapped ? "true" : "false")
-             << ",\"onHomeGoal\":" << (carrier_on_home_goal ? "true" : "false") << "}";
-        agentDebugLog("ctf_coordinator_node.cpp:sendCarrierGoal", "carrier goal sent", "H2",
-                      data);
-      }
-      // #endregion
+      snapChaseGoal(x, y);
       carrier.sendGoal(x, y, yaw);
     };
 
@@ -846,24 +796,6 @@ private:
       rate.sleep();
     }
 
-    // #region agent log
-    {
-      std::ostringstream data;
-      data << "{\"hasCarrierPose\":" << (initial_cpose ? "true" : "false")
-           << ",\"hasPursuerPose\":" << (initial_ppose ? "true" : "false");
-      if (initial_cpose)
-      {
-        data << ",\"carrierX\":" << initial_cpose->x << ",\"carrierY\":" << initial_cpose->y;
-      }
-      if (initial_ppose)
-      {
-        data << ",\"pursuerX\":" << initial_ppose->x << ",\"pursuerY\":" << initial_ppose->y;
-      }
-      data << "}";
-      agentDebugLog("ctf_coordinator_node.cpp:runChasePhase", "TF wait result", "H1", data);
-    }
-    // #endregion
-
     if (initial_cpose && initial_ppose)
     {
       const auto flag_xy = resolveFlagPosition(carrier);
@@ -911,7 +843,6 @@ private:
       ROS_WARN("Chase started without initial pursuer goal: missing TF pose");
     }
 
-    ros::Time last_carrier_debug_log = ros::Time(0);
     while (ros::ok())
     {
       ros::spinOnce();
@@ -924,27 +855,6 @@ private:
         rate.sleep();
         continue;
       }
-
-      // #region agent log
-      if ((ros::Time::now() - last_carrier_debug_log).toSec() >= 2.0)
-      {
-        last_carrier_debug_log = ros::Time::now();
-        const double goal_x =
-            carrier_on_home_goal ? carrier.home().x : clearance_goal_x;
-        const double goal_y =
-            carrier_on_home_goal ? carrier.home().y : clearance_goal_y;
-        const double dist_to_goal = ctf_navigation::geometry::distance2D(
-            cpose->x, cpose->y, goal_x, goal_y);
-        std::ostringstream data;
-        data << "{\"carrierNs\":\"" << carrier.ns() << "\",\"carrierX\":" << cpose->x
-             << ",\"carrierY\":" << cpose->y << ",\"goalX\":" << goal_x << ",\"goalY\":" << goal_y
-             << ",\"distToGoal\":" << dist_to_goal
-             << ",\"onHomeGoal\":" << (carrier_on_home_goal ? "true" : "false")
-             << ",\"mbTerminal\":" << (carrier.moveBaseTerminal() ? "true" : "false")
-             << ",\"mbSucceeded\":" << (carrier.moveBaseSucceeded() ? "true" : "false") << "}";
-        agentDebugLog("ctf_coordinator_node.cpp:chaseLoop", "carrier chase tick", "H2", data);
-      }
-      // #endregion
 
       carrier_vel.update(cpose->x, cpose->y, ros::Time::now().toSec());
 
@@ -1034,15 +944,6 @@ private:
           {
             sendCarrierGoal(carrier.home().x, carrier.home().y, carrier.home().yaw);
             carrier_on_home_goal = true;
-            // #region agent log
-            {
-              std::ostringstream data;
-              data << "{\"carrierNs\":\"" << carrier.ns()
-                   << "\",\"stuckForSec\":" << stuck_for_sec << ",\"action\":\"escalate_to_home\"}";
-              agentDebugLog("ctf_coordinator_node.cpp:chaseLoop", "clearance stuck escalate", "H3",
-                            data);
-            }
-            // #endregion
             ROS_WARN(
                 "CTF CHASE: %s stuck on clearance for %.1f s; escalating to home goal",
                 carrier.ns().c_str(), stuck_for_sec);
