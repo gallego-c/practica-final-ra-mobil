@@ -23,5 +23,5 @@ static_layer:
 # that are not yet in the static SLAM map.
 
 inflation_layer:
-  inflation_radius: 0.35
-  cost_scaling_factor: 10.0
+  inflation_radius: 0.25
+  cost_scaling_factor: 12.0
