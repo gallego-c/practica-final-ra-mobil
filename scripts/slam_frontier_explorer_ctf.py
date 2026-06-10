@@ -123,6 +123,8 @@ class SlamFrontierExplorerCtf:
         self.chase_goal_period = float(rospy.get_param('~chase_goal_period', 1.0))
         self.capture_pause_sec = float(rospy.get_param('~capture_pause_sec', 3.0))
         self.flag_memory_timeout = float(rospy.get_param('~flag_memory_timeout', 5.0))
+        self.flag_support_standoff = float(
+            rospy.get_param('~flag_support_standoff', 1.20))
         self.waypoint_reached_dist = float(rospy.get_param('~waypoint_reached_dist', 0.55))
         self.chase_flag_clearance = float(rospy.get_param('~chase_flag_clearance', 0.75))
         self.chase_clearance_reached_dist = float(
@@ -177,7 +179,8 @@ class SlamFrontierExplorerCtf:
         self.last_known_flag_xy = None
         self.flag_lock = threading.Lock()
 
-        # Per-robot search sub-state during EXPLORING phase (matches C++ SearchState)
+        # Per-robot search sub-state during EXPLORING phase:
+        # EXPLORING | PURSUING_FLAG (own camera, can capture) | APPROACHING_SHARED (teammate estimate)
         self._search_state = {'robot1': 'EXPLORING', 'robot2': 'EXPLORING'}
         self._state_lock = threading.Lock()
 
@@ -311,52 +314,79 @@ class SlamFrontierExplorerCtf:
             return 'teammate'
         return None
 
+    def _clear_pursuit_tracking(self, ns):
+        self._pursuit_start_time.pop(ns, None)
+        self._pursuit_closest_dist.pop(ns, None)
+        self._pursuit_last_d_flag.pop(ns, None)
+        self._pursuit_last_progress_time.pop(ns, None)
+        self._pursuit_last_nudge_time.pop(ns, None)
+        self._pursuit_stuck_count.pop(ns, None)
+        self._pursuit_start_dist.pop(ns, None)
+        self._last_flag_goal.pop(ns, None)
+        self._last_flag_goal_time.pop(ns, None)
+
+    def _begin_flag_navigation(self, ns, flag_xy):
+        self._pursuit_start_time[ns] = time.monotonic()
+        self._pursuit_last_progress_time[ns] = time.monotonic()
+        self._pursuit_last_nudge_time.pop(ns, None)
+        self._pursuit_stuck_count[ns] = 0
+        pose = self._get_robot_pose(ns + '/base_footprint')
+        if pose is not None and flag_xy is not None:
+            d0 = math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
+            self._pursuit_start_dist[ns] = d0
+            self._pursuit_closest_dist[ns] = d0
+            self._pursuit_last_d_flag[ns] = d0
+
     def _update_search_flag_states(self):
-        """Switch robots between exploration and flag pursuit without changing game phase."""
+        """Flag location is shared via _get_fresh_flag_estimate (teammate estimate).
+
+        - PURSUING_FLAG: this robot sees the flag with its own camera → go capture.
+        - APPROACHING_SHARED: teammate shared the location → navigate there to be
+          close enough to intercept the carrier after capture.
+        - EXPLORING: no flag knowledge yet.
+        """
         with self._state_lock:
             for ns in ('robot1', 'robot2'):
-                has_flag, flag_xy = self._get_fresh_flag_estimate(ns)
+                has_own, own_xy = self._has_fresh_flag_estimate(ns)
+                source = self._flag_estimate_source(ns)
                 current = self._search_state[ns]
-                if has_flag:
+
+                if has_own:
                     if current != 'PURSUING_FLAG':
-                        source = self._flag_estimate_source(ns)
                         rospy.loginfo(
-                            'CTF FLAG: %s switching to approach (source=%s)',
-                            ns, source)
+                            'CTF FLAG: %s pursuing flag (own camera)', ns)
                         self._search_state[ns] = 'PURSUING_FLAG'
-                        self._pursuit_start_time[ns] = time.monotonic()
-                        self._pursuit_last_progress_time[ns] = time.monotonic()
-                        self._pursuit_last_nudge_time.pop(ns, None)
-                        self._pursuit_stuck_count[ns] = 0
-                        pose = self._get_robot_pose(ns + '/base_footprint')
-                        if pose is not None and flag_xy is not None:
-                            d0 = math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
-                            self._pursuit_start_dist[ns] = d0
-                            self._pursuit_closest_dist[ns] = d0
-                            self._pursuit_last_d_flag[ns] = d0
+                        self._begin_flag_navigation(ns, own_xy)
                         self._clients[ns].cancel_all_goals()
-                        self._last_flag_goal.pop(ns, None)
-                        self._last_flag_goal_time.pop(ns, None)
+                elif source == 'teammate':
+                    _, shared_xy = self._get_fresh_flag_estimate(ns)
+                    if shared_xy is None:
+                        continue
+                    if current != 'APPROACHING_SHARED':
+                        rospy.loginfo(
+                            'CTF FLAG: %s approaching shared flag at (%.2f, %.2f)',
+                            ns, shared_xy[0], shared_xy[1])
+                        self._search_state[ns] = 'APPROACHING_SHARED'
+                        self._begin_flag_navigation(ns, shared_xy)
+                        self._clients[ns].cancel_all_goals()
                 elif current != 'EXPLORING':
-                    rospy.loginfo(
-                        'CTF FLAG: %s lost shared flag estimate; returning to exploration', ns)
+                    rospy.loginfo('%s: flag estimate lost; resuming exploration', ns)
                     self._search_state[ns] = 'EXPLORING'
-                    self._pursuit_start_time.pop(ns, None)
-                    self._pursuit_closest_dist.pop(ns, None)
-                    self._pursuit_last_d_flag.pop(ns, None)
-                    self._pursuit_last_progress_time.pop(ns, None)
-                    self._pursuit_last_nudge_time.pop(ns, None)
-                    self._pursuit_stuck_count.pop(ns, None)
-                    self._pursuit_start_dist.pop(ns, None)
+                    self._clear_pursuit_tracking(ns)
                     self._clients[ns].cancel_all_goals()
-                    self._last_flag_goal.pop(ns, None)
-                    self._last_flag_goal_time.pop(ns, None)
 
     def _find_first_capture_candidate(self):
-        """Return (ns, flag_xy) only when the robot has physically reached the flag."""
+        """Return (ns, flag_xy) only when the robot has physically reached the flag.
+        Picks the closest eligible robot to avoid the wrong one 'capturing'."""
+        candidates = []
         for ns in ('robot1', 'robot2'):
             has_own, flag_xy = self._has_fresh_flag_estimate(ns)
             if not has_own or flag_xy is None:
+                continue
+
+            with self.flag_lock:
+                age = rospy.Time.now().to_sec() - self.flag_estimate_time[ns]
+            if age > 2.0:
                 continue
 
             with self._state_lock:
@@ -392,8 +422,12 @@ class SlamFrontierExplorerCtf:
             if not at_closest and not mb_done:
                 continue
 
-            return ns, flag_xy
-        return None
+            candidates.append((ns, flag_xy, d_flag))
+
+        if not candidates:
+            return None
+        candidates.sort(key=lambda c: c[2])
+        return candidates[0][0], candidates[0][1]
 
     def _map_cb(self, msg):
         with self._map_lock:
@@ -605,6 +639,10 @@ class SlamFrontierExplorerCtf:
         used_fallback = False
 
         has_flag_hint, flag_xy = self._get_fresh_flag_estimate(ns)
+        flag_source = self._flag_estimate_source(ns)
+        flag_bias = self.flag_bias_weight
+        if flag_source == 'teammate':
+            flag_bias *= 3.0
 
         for wx, wy, size in frontiers:
             if self._is_blacklisted(wx, wy):
@@ -614,7 +652,7 @@ class SlamFrontierExplorerCtf:
 
             my_dist = math.hypot(wx - robot_xy[0], wy - robot_xy[1])
 
-            if strict_voronoi:
+            if strict_voronoi and flag_source != 'teammate':
                 blocked = False
                 for other_ns, other_xy in all_poses.items():
                     if other_ns == ns:
@@ -627,7 +665,9 @@ class SlamFrontierExplorerCtf:
 
             gain = self.gain_scale * math.sqrt(float(size))
             score = my_dist - gain
-            score += self._territory_penalty_for(ns, wx, wy)
+
+            if flag_source != 'teammate':
+                score += self._territory_penalty_for(ns, wx, wy)
 
             for other_ns, other_xy in all_poses.items():
                 if other_ns == ns:
@@ -638,7 +678,7 @@ class SlamFrontierExplorerCtf:
 
             if has_flag_hint and flag_xy is not None:
                 dist_to_flag = math.hypot(wx - flag_xy[0], wy - flag_xy[1])
-                score += self.flag_bias_weight * dist_to_flag
+                score += flag_bias * dist_to_flag
 
             if score < best_score:
                 best_score = score
@@ -685,9 +725,16 @@ class SlamFrontierExplorerCtf:
                      if pose is not None else float('inf'))
         rate = rospy.Rate(5.0)
         while rospy.Time.now() < deadline and not rospy.is_shutdown() and not self._stop.is_set():
-            # Interrupt exploration when this robot or teammate sees the flag
-            has_flag, _ = self._get_fresh_flag_estimate(ns)
-            if has_flag or self.game_state != 'EXPLORING':
+            if self.game_state != 'EXPLORING':
+                client.cancel_goal()
+                return False
+            has_own, _ = self._has_fresh_flag_estimate(ns)
+            if has_own:
+                client.cancel_goal()
+                return False
+            with self._state_lock:
+                mode = self._search_state.get(ns, 'EXPLORING')
+            if mode in ('PURSUING_FLAG', 'APPROACHING_SHARED'):
                 client.cancel_goal()
                 return False
 
@@ -845,7 +892,7 @@ class SlamFrontierExplorerCtf:
         gy = ry + uy * step + py * flank_sign * self.flag_approach_flank_step * 0.7
         return gx, gy, math.atan2(gy - ry, gx - rx)
 
-    def _send_flag_approach(self, ns, client, pose, flag_xy):
+    def _send_flag_approach(self, ns, client, pose, flag_xy, support_flank=0):
         d_flag = math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
         mb_state = client.get_state()
         now = time.monotonic()
@@ -923,7 +970,7 @@ class SlamFrontierExplorerCtf:
                 gx, gy, gyaw = self._get_detour_goal(pose, flag_xy, flank_sign)
                 mode = 'detour'
             else:
-                flank = self._flank_index_for_stuck(stuck_count)
+                flank = support_flank if support_flank else self._flank_index_for_stuck(stuck_count)
                 gx, gy, gyaw = self._get_approach_goal(
                     pose, flag_xy, direct=use_direct, flank_index=flank)
                 if not use_direct:
@@ -1252,12 +1299,31 @@ class SlamFrontierExplorerCtf:
                 search_state = self._search_state[ns]
 
             if search_state == 'PURSUING_FLAG':
-                has_flag, flag_xy = self._get_fresh_flag_estimate(ns)
-                if has_flag and flag_xy is not None:
+                has_own, own_xy = self._has_fresh_flag_estimate(ns)
+                if has_own and own_xy is not None:
                     pose = self._get_robot_pose(cfg['base_frame'])
                     if pose is not None:
-                        self._send_flag_approach(ns, client, pose, flag_xy)
+                        self._send_flag_approach(ns, client, pose, own_xy)
 
+                rospy.sleep(0.2)
+                continue
+
+            if search_state == 'APPROACHING_SHARED':
+                has_shared, shared_xy = self._get_fresh_flag_estimate(ns)
+                if has_shared and shared_xy is not None:
+                    pose = self._get_robot_pose(cfg['base_frame'])
+                    if pose is not None:
+                        d_flag = math.hypot(
+                            pose[0] - shared_xy[0], pose[1] - shared_xy[1])
+                        if d_flag > self.flag_support_standoff:
+                            flank = 1 if ns == 'robot1' else -1
+                            self._send_flag_approach(
+                                ns, client, pose, shared_xy, support_flank=flank)
+                        else:
+                            rospy.loginfo_throttle(
+                                5.0,
+                                '%s: in support position (%.2f m from shared flag)',
+                                ns, d_flag)
                 rospy.sleep(0.2)
                 continue
 
