@@ -896,16 +896,7 @@ class SlamFrontierExplorerCtf:
         return best
 
     def _get_nav_grid(self, ns):
-        robot_map = self._get_robot_map(ns)
-        merged = self._get_map()
-        if robot_map is None:
-            return merged
-        if merged is not None and robot_map.data:
-            known = sum(1 for v in robot_map.data if v >= 0)
-            coverage = float(known) / float(len(robot_map.data))
-            if coverage < 0.20:
-                return merged
-        return robot_map or merged
+        return self._get_map()
 
     def _resolve_chase_goal(self, ns, robot_pose, target_xy, allow_partial=True):
         """Map-validated chase goal: known-free cell, stepping through mapped space."""
@@ -1326,7 +1317,7 @@ class SlamFrontierExplorerCtf:
         if not need_send:
             return
 
-        grid = self._get_robot_map(ns) or self._get_map()
+        grid = self._get_map()
         stuck_count = self._pursuit_stuck_count.get(ns, 0)
         flank_sign = 1 if stuck_count % 2 == 1 else -1
         mode = 'approach'
