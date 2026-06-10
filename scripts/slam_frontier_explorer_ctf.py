@@ -1047,13 +1047,22 @@ class SlamFrontierExplorerCtf:
             rate.sleep()
         pub.publish(Twist())
 
-    def _should_send_flag_goal(self, ns, fx, fy, pursuing=False, d_flag=None):
+    def _should_send_flag_goal(self, ns, fx, fy, pursuing=False, d_flag=None, support_only=False):
         now = rospy.Time.now().to_sec()
         last_goal = self._last_flag_goal.get(ns)
         last_time = self._last_flag_goal_time.get(ns, 0.0)
 
         moved = last_goal is None or math.hypot(fx - last_goal[0], fy - last_goal[1]) > 0.25
         
+        if support_only:
+            # For supporting robots, only replan when the shared estimate has actually moved.
+            # This makes the goal static, allowing the global planner to route around walls.
+            if moved:
+                self._last_flag_goal[ns] = (fx, fy)
+                self._last_flag_goal_time[ns] = now
+                return True
+            return False
+
         # When far away from the flag, we don't need to replan constantly (every 0.8s),
         # which causes move_base to stutter. A 5.0s cooldown is much smoother.
         if d_flag is not None and d_flag > 1.5:
@@ -1269,7 +1278,7 @@ class SlamFrontierExplorerCtf:
         closest = self._pursuit_closest_dist.get(ns, d_flag)
         made_approach_progress = closest <= start_dist - 0.35
         if support_only:
-            close_enough_to_refine = d_flag <= self.flag_support_standoff + 0.45
+            close_enough_to_refine = True
             still_far = d_flag > self.flag_support_standoff
         else:
             close_enough_to_refine = (
@@ -1285,7 +1294,9 @@ class SlamFrontierExplorerCtf:
             or no_progress
             or oscillating
             or (mb_state == GoalStatus.SUCCEEDED and still_far)
-            or self._should_send_flag_goal(ns, flag_xy[0], flag_xy[1], pursuing=True, d_flag=d_flag))
+            or self._should_send_flag_goal(
+                ns, flag_xy[0], flag_xy[1], pursuing=not support_only,
+                d_flag=d_flag, support_only=support_only))
 
         if not need_send:
             return
