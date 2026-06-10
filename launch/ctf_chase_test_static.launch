@@ -7,16 +7,15 @@
        la bandera y debe volver a su base; el pursuer (robot2) aparece en un punto
        configurable del mapa libre de obstáculos.
 
-       Uso básico:
-         roslaunch ctf_navigation ctf_chase_test_static.launch
+       Uso (pursuer_slot es obligatorio: 1-10 o custom):
+         roslaunch ctf_navigation ctf_chase_test_static.launch pursuer_slot:=4
 
-       Con posición del pursuer personalizada:
+       Posición personalizada del pursuer:
          roslaunch ctf_navigation ctf_chase_test_static.launch \
-           pursuer_x:=2.0 pursuer_y:=-1.5
+           pursuer_slot:=custom pursuer_x:=2.0 pursuer_y:=-2.5 pursuer_yaw:=1.57
 
-       Para obtener una posición aleatoria del pursuer usa el script auxiliar:
-         rosrun ctf_navigation random_free_spawn.py
-       y pega las coordenadas que imprime como argumentos pursuer_x / pursuer_y.
+       Listar los 10 puntos predefinidos (flag list):
+         rosrun ctf_navigation pick_pursuer_spawn.py
 
        Puedes cambiar qué robot es el carrier con:
          roslaunch ctf_navigation ctf_chase_test_static.launch \
@@ -30,16 +29,19 @@
   <arg name="flag_x"                 default="-3.2"/>
   <arg name="flag_y"                 default="3.2"/>
 
-  <!-- Carrier (robot1): spawns near the flag but with clearance (~1.8 m from flag) -->
-  <arg name="carrier_x"              default="-1.5"/>
-  <arg name="carrier_y"              default="2.5"/>
-  <arg name="carrier_yaw"            default="-1.83"/>
+  <!-- Carrier (robot1): half the previous distance from flag, facing west -->
+  <arg name="carrier_x"              default="-2.37"/>
+  <arg name="carrier_y"              default="2.86"/>
+  <arg name="carrier_yaw"            default="3.1416"/>
 
-  <!-- Pursuer (robot2): spawns at a free random-looking position.
-       Override with pursuer_x / pursuer_y from random_free_spawn.py. -->
-  <arg name="pursuer_x"              default="2.0"/>
-  <arg name="pursuer_y"              default="-2.5"/>
-  <arg name="pursuer_yaw"            default="1.5708"/>
+  <!-- Pursuer (robot2): REQUIRED pursuer_slot (1-10 or custom); see params/pursuer_spawn_points.yaml -->
+  <arg name="pursuer_slot"/>
+  <arg name="pursuer_x"              default="none"/>
+  <arg name="pursuer_y"              default="none"/>
+  <arg name="pursuer_yaw"            default="none"/>
+  <arg name="pursuer_x_final"        default="$(eval float(arg('pursuer_x')) if arg('pursuer_slot') == 'custom' else [2.00, 2.50, 0.00, 0.50, -4.00, 3.20, -4.00, 1.20, -4.00, 3.00][int(arg('pursuer_slot')) - 1])"/>
+  <arg name="pursuer_y_final"        default="$(eval float(arg('pursuer_y')) if arg('pursuer_slot') == 'custom' else [-2.50, 1.00, -2.80, 2.80, -1.00, -1.00, 1.50, 1.50, -3.50, -3.00][int(arg('pursuer_slot')) - 1])"/>
+  <arg name="pursuer_yaw_final"      default="$(eval float(arg('pursuer_yaw')) if arg('pursuer_slot') == 'custom' else [1.5708, 3.1416, 1.5708, -1.5708, 0.7854, 3.1416, 0.0, -2.3562, 0.7854, 2.3562][int(arg('pursuer_slot')) - 1])"/>
 
   <!-- Which robot is the initial carrier (0 = robot1, 1 = robot2) -->
   <arg name="initial_carrier_robot"  default="0"/>
@@ -49,14 +51,21 @@
   <arg name="carrier_speed_window"   default="4.0"/>
   <arg name="intercept_margin_time"  default="1.5"/>
 
+  <!-- Resolved spawn (check with rosparam get /ctf_chase_spawn) -->
+  <rosparam param="/ctf_chase_spawn">
+    pursuer_slot: $(arg pursuer_slot)
+    carrier: {x: $(arg carrier_x), y: $(arg carrier_y), yaw: $(arg carrier_yaw)}
+    pursuer: {x: $(arg pursuer_x_final), y: $(arg pursuer_y_final), yaw: $(arg pursuer_yaw_final)}
+  </rosparam>
+
   <!-- ── 1. Gazebo Simulation ──────────────────────────────────────────────── -->
   <include file="$(find ctf_navigation)/launch/simulation.launch">
     <arg name="robot1_x"   value="$(arg carrier_x)"/>
     <arg name="robot1_y"   value="$(arg carrier_y)"/>
     <arg name="robot1_yaw" value="$(arg carrier_yaw)"/>
-    <arg name="robot2_x"   value="$(arg pursuer_x)"/>
-    <arg name="robot2_y"   value="$(arg pursuer_y)"/>
-    <arg name="robot2_yaw" value="$(arg pursuer_yaw)"/>
+    <arg name="robot2_x"   value="$(arg pursuer_x_final)"/>
+    <arg name="robot2_y"   value="$(arg pursuer_y_final)"/>
+    <arg name="robot2_yaw" value="$(arg pursuer_yaw_final)"/>
     <arg name="flag_x"     value="$(arg flag_x)"/>
     <arg name="flag_y"     value="$(arg flag_y)"/>
   </include>

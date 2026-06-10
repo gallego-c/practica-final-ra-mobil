@@ -1,0 +1,15 @@
+# Predefined collision-free pursuer spawn points for chase test launches.
+# User-facing slots are 1-10 (pass pursuer_slot:=N to ctf_chase_test_*.launch).
+# Each point was chosen on free cells of ctf_map with >= 0.75 m clearance
+# from occupied map cells (see scripts/validate_pursuer_spawns.py).
+spawns:
+  - {id: 0, x: 2.00, y: -2.50, yaw: 1.5708, label: "south_east"}
+  - {id: 1, x: 2.50, y:  1.00, yaw: 3.1416, label: "east_upper"}
+  - {id: 2, x: 0.00, y: -2.80, yaw: 1.5708, label: "south_center"}
+  - {id: 3, x: 0.50, y:  2.80, yaw: -1.5708, label: "north_center"}
+  - {id: 4, x: -4.00, y: -1.00, yaw: 0.7854, label: "west_south_corridor"}
+  - {id: 5, x: 3.20, y: -1.00, yaw: 3.1416, label: "east_lower"}
+  - {id: 6, x: -4.00, y:  1.50, yaw: 0.0, label: "west_north_corridor"}
+  - {id: 7, x: 1.20, y:  1.50, yaw: -2.3562, label: "north_east_interior"}
+  - {id: 8, x: -4.00, y: -3.50, yaw: 0.7854, label: "south_west_corridor"}
+  - {id: 9, x: 3.00, y: -3.00, yaw: 2.3562, label: "south_east_far"}
