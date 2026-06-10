@@ -91,7 +91,7 @@
     <param name="chase_flag_clearance" value="0.75"/>
     <param name="capture_pause_sec" value="3.0"/>
     <param name="catch_distance" value="0.65"/>
-    <param name="flag_memory_timeout" value="5.0"/>
+    <param name="flag_memory_timeout" value="120.0"/>
     <param name="waypoint_reached_dist" value="0.55"/>
     <param name="chase_goal_period" value="1.0"/>
 

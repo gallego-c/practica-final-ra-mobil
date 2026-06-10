@@ -122,7 +122,7 @@ class SlamFrontierExplorerCtf:
         self.catch_distance = float(rospy.get_param('~catch_distance', 0.65))
         self.chase_goal_period = float(rospy.get_param('~chase_goal_period', 1.0))
         self.capture_pause_sec = float(rospy.get_param('~capture_pause_sec', 3.0))
-        self.flag_memory_timeout = float(rospy.get_param('~flag_memory_timeout', 5.0))
+        self.flag_memory_timeout = float(rospy.get_param('~flag_memory_timeout', 120.0))
         self.flag_support_standoff = float(
             rospy.get_param('~flag_support_standoff', 1.20))
         self.flag_global_plan_min_dist = float(
@@ -1078,13 +1078,33 @@ class SlamFrontierExplorerCtf:
             return True
         return False
 
+    def _cell_is_navigable(self, grid, mx, my):
+        info = grid.info
+        w, h = info.width, info.height
+        data = grid.data
+        clear_cells = max(1, int(round(self.min_goal_clearance / info.resolution)))
+
+        if mx < clear_cells or my < clear_cells or mx >= w - clear_cells or my >= h - clear_cells:
+            return False
+
+        center_val = data[cell_index(mx, my, w)]
+        if not (center_val < 0 or center_val < FREE_THRESH):
+            return False
+
+        for dy in range(-clear_cells, clear_cells + 1):
+            for dx in range(-clear_cells, clear_cells + 1):
+                value = data[cell_index(mx + dx, my + dy, w)]
+                if value >= FREE_THRESH:
+                    return False
+        return True
+
     def _snap_goal_to_free(self, grid, wx, wy):
-        """Return nearest free map cell to (wx, wy), or None."""
+        """Return nearest navigable (free or unknown) map cell to (wx, wy), or None."""
         if grid is None:
             return wx, wy
         info = grid.info
         mx, my = world_to_map(wx, wy, info)
-        if self._cell_has_clearance(grid, mx, my):
+        if self._cell_is_navigable(grid, mx, my):
             return wx, wy
 
         search_cells = max(3, int(round(1.5 / info.resolution)))
@@ -1096,7 +1116,7 @@ class SlamFrontierExplorerCtf:
                     if abs(dx) != radius and abs(dy) != radius:
                         continue
                     cx, cy = mx + dx, my + dy
-                    if not self._cell_has_clearance(grid, cx, cy):
+                    if not self._cell_is_navigable(grid, cx, cy):
                         continue
                     gx, gy = map_to_world(cx, cy, info)
                     d = math.hypot(gx - wx, gy - wy)
@@ -1248,16 +1268,21 @@ class SlamFrontierExplorerCtf:
                 stuck_count = self._pursuit_stuck_count[ns]
 
         last_d = self._pursuit_last_d_flag.get(ns, d_flag)
-        no_progress = (
-            now - self._pursuit_last_progress_time.get(ns, now) > self.flag_approach_nudge_sec
-            and d_flag >= last_d - 0.03)
         terminal = mb_state in (
             GoalStatus.ABORTED, GoalStatus.REJECTED, GoalStatus.PREEMPTED)
         idle = mb_state not in (
             GoalStatus.ACTIVE, GoalStatus.PENDING, GoalStatus.RECALLING)
-        oscillating = (
-            mb_state in (GoalStatus.ACTIVE, GoalStatus.PENDING)
-            and no_progress and d_flag > min_approach_dist)
+
+        if support_only:
+            no_progress = False
+            oscillating = False
+        else:
+            no_progress = (
+                now - self._pursuit_last_progress_time.get(ns, now) > self.flag_approach_nudge_sec
+                and d_flag >= last_d - 0.03)
+            oscillating = (
+                mb_state in (GoalStatus.ACTIVE, GoalStatus.PENDING)
+                and no_progress and d_flag > min_approach_dist)
 
         use_backoff = False
         if d_flag <= self.flag_approach_backoff_max and (oscillating or (terminal and no_progress)):
