@@ -10,8 +10,8 @@ use_quadratic:  true
 use_grid_path:  false
 
 lethal_cost:    253
-neutral_cost:    66
-cost_factor:     0.55
+neutral_cost:    50
+cost_factor:     3.0
 
 publish_potential: true
 orientation_mode: 0

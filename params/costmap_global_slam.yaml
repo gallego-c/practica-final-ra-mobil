@@ -22,6 +22,8 @@ static_layer:
 # planner see dynamic obstacles (the flag, the other robot, moved furniture)
 # that are not yet in the static SLAM map.
 
+# Wider inflation + steep cost falloff → global plans prefer corridor centers
+# over hugging walls. Local costmap stays tighter for execution.
 inflation_layer:
-  inflation_radius: 0.25
-  cost_scaling_factor: 12.0
+  inflation_radius: 0.30
+  cost_scaling_factor: 18.0

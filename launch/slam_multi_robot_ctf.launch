@@ -99,25 +99,25 @@
     <param name="goal_timeout" value="45.0"/>
     <param name="min_coverage" value="0.72"/>
     <param name="gain_scale" value="2.0"/>
-    <param name="voronoi_margin" value="0.30"/>
-    <param name="separation_weight" value="1.5"/>
+    <param name="voronoi_margin" value="0.15"/>
+    <param name="separation_weight" value="1.0"/>
     <param name="flag_bias_weight" value="0.8"/>
-    <param name="territory_penalty" value="1.5"/>
-    <param name="frontier_claim_sec" value="50.0"/>
+    <param name="territory_penalty" value="0.5"/>
+    <param name="frontier_claim_sec" value="35.0"/>
     <param name="min_goal_clearance" value="0.15"/>
     <param name="robot_radius" value="0.28"/>
     <param name="progress_timeout" value="15.0"/>
     <param name="min_progress_distance" value="0.15"/>
     <param name="startup_delay" value="12.0"/>
     <param name="move_base_timeout" value="120.0"/>
-    <param name="idle_frontier_cycles" value="6"/>
+    <param name="idle_frontier_cycles" value="3"/>
 
     <!-- CTF: standoff must account for flag cylinder (r=0.12) + costmap inflation -->
     <param name="flag_collision_radius" value="0.12"/>
     <param name="flag_standoff_distance" value="0.20"/>
     <param name="flag_capture_margin" value="0.08"/>
-    <param name="flag_capture_distance" value="0.45"/>
-    <param name="flag_capture_min_pursuit_sec" value="4.0"/>
+    <param name="flag_capture_distance" value="0.60"/>
+    <param name="flag_capture_min_pursuit_sec" value="1.0"/>
     <param name="flag_capture_min_progress" value="0.20"/>
     <param name="flag_approach_stall_sec" value="5.0"/>
     <param name="flag_approach_nudge_sec" value="3.0"/>
