@@ -183,6 +183,7 @@ class SlamFrontierExplorerCtf:
         self.last_known_flag_xy = None
         self.flag_lock = threading.Lock()
         self._close_to_flag_since = {}
+        self.flag_true_xy = rospy.get_param('/ctf_navigation/spawns/flag', None)
 
         # Per-robot search sub-state during EXPLORING phase:
         # EXPLORING | PURSUING_FLAG (own camera, can capture) | APPROACHING_SHARED (teammate estimate)
@@ -439,6 +440,16 @@ class SlamFrontierExplorerCtf:
             if d_flag > self.flag_capture_distance:
                 self._close_to_flag_since.pop(ns, None)
                 continue
+
+            if self.flag_true_xy is not None:
+                d_true = math.hypot(pose[0] - self.flag_true_xy[0], pose[1] - self.flag_true_xy[1])
+                rospy.loginfo_throttle(
+                    5.0, '%s: close to flag estimate? d_flag=%.2f, true_dist=%.2f',
+                    ns, d_flag, d_true
+                )
+                if d_true > 1.5:  # Allow up to 1.5m of SLAM drift
+                    self._close_to_flag_since.pop(ns, None)
+                    continue
 
             # Debounce: require flag visible briefly (not capture from one noisy frame)
             if self._flag_visible_duration(ns) < 0.25:
@@ -905,13 +916,20 @@ class SlamFrontierExplorerCtf:
             rate.sleep()
         pub.publish(Twist())
 
-    def _should_send_flag_goal(self, ns, fx, fy, pursuing=False):
+    def _should_send_flag_goal(self, ns, fx, fy, pursuing=False, d_flag=None):
         now = rospy.Time.now().to_sec()
         last_goal = self._last_flag_goal.get(ns)
         last_time = self._last_flag_goal_time.get(ns, 0.0)
 
         moved = last_goal is None or math.hypot(fx - last_goal[0], fy - last_goal[1]) > 0.25
-        stale_interval = 0.8 if pursuing else 1.0
+        
+        # When far away from the flag, we don't need to replan constantly (every 0.8s),
+        # which causes move_base to stutter. A 5.0s cooldown is much smoother.
+        if d_flag is not None and d_flag > 1.5:
+            stale_interval = 5.0
+        else:
+            stale_interval = 0.8 if pursuing else 1.0
+            
         stale = (now - last_time) > stale_interval
 
         if moved or stale:
@@ -1149,7 +1167,7 @@ class SlamFrontierExplorerCtf:
             or no_progress
             or oscillating
             or (mb_state == GoalStatus.SUCCEEDED and still_far)
-            or self._should_send_flag_goal(ns, flag_xy[0], flag_xy[1], pursuing=True))
+            or self._should_send_flag_goal(ns, flag_xy[0], flag_xy[1], pursuing=True, d_flag=d_flag))
 
         if not need_send:
             return
@@ -1171,17 +1189,26 @@ class SlamFrontierExplorerCtf:
                 gx, gy, gyaw = self._get_detour_goal(pose, flag_xy, flank_sign)
                 mode = 'detour'
             else:
-                flank = support_flank if support_flank else self._flank_index_for_stuck(stuck_count)
-                gx, gy, gyaw = self._get_approach_goal(
-                    pose, flag_xy, direct=use_direct, flank_index=flank)
-                if not use_direct:
-                    mode = 'step'
-                elif flank:
-                    mode = 'flank'
-                elif use_direct:
-                    mode = 'direct'
-                else:
-                    mode = 'approach'
+                # Far away from the flag: try map-safe route first
+                if not use_direct and grid is not None:
+                    step = self._find_map_goal_toward(grid, pose, flag_xy)
+                    if step is not None:
+                        gx, gy = step
+                        gyaw = math.atan2(gy - pose[1], gx - pose[0])
+                        mode = 'map_safe'
+
+                if gx is None:
+                    flank = support_flank if support_flank else self._flank_index_for_stuck(stuck_count)
+                    gx, gy, gyaw = self._get_approach_goal(
+                        pose, flag_xy, direct=use_direct, flank_index=flank)
+                    if not use_direct:
+                        mode = 'step'
+                    elif flank:
+                        mode = 'flank'
+                    elif use_direct:
+                        mode = 'direct'
+                    else:
+                        mode = 'approach'
 
         if grid is not None:
             if mode == 'step' or d_flag > self.flag_approach_max_distance:
@@ -1825,8 +1852,17 @@ class SlamFrontierExplorerCtf:
             client.cancel_all_goals()
         self._done_pub.publish(Bool(data=True))
 
+        rospy.loginfo("\n"
+                      "**************************************************\n"
+                      "****************   GAME FINISHED   ***************\n"
+                      "**************************************************\n")
+
         for t in threads:
             t.join(timeout=3.0)
+
+        import os
+        os._exit(0)
+
 
 
 def main():

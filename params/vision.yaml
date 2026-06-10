@@ -35,7 +35,7 @@ s_min: 100
 v_min: 60
 
 # Fallback RGB: la bandera Gazebo tiene R≈255, G≈13, B≈13.
-use_rgb_fallback: true
+use_rgb_fallback: false
 rgb_red_min: 100
 rgb_red_dominance: 1.3
 

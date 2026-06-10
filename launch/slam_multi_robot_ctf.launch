@@ -92,7 +92,7 @@
 
   <!-- 6. Autonomous exploration + CTF Game Coordinator -->
   <node pkg="ctf_navigation" type="slam_frontier_explorer_ctf.py"
-        name="slam_frontier_explorer_ctf" output="screen">
+        name="slam_frontier_explorer_ctf" output="screen" required="true">
     <param name="map_frame" value="$(arg world_frame)"/>
     <param name="map_topic" value="$(arg merged_map_topic)"/>
     <param name="exploration_timeout" value="300.0"/>
