@@ -1,0 +1,91 @@
+<launch>
+  <arg name="world_frame" default="map"/>
+  <arg name="merged_map_topic" default="/merged_map"/>
+  <arg name="rviz" default="true"/>
+
+  <!-- Robots reales a 3.80 m de separación (1.90 m a cada lado del centro) -->
+  <arg name="robot1_x" default="-1.90"/>
+  <arg name="robot1_y" default="0.0"/>
+  <arg name="robot1_yaw" default="0.0"/>
+  <arg name="robot2_x" default="1.90"/>
+  <arg name="robot2_y" default="0.0"/>
+  <arg name="robot2_yaw" default="3.1416"/>
+
+  <arg name="quiet_slam" default="true"/>
+
+  <!-- 1. Shared SLAM (GMapping for both robots & map_merge) -->
+  <include file="$(find ctf_navigation)/launch/shared_slam.launch">
+    <arg name="world_frame" value="$(arg world_frame)"/>
+    <arg name="merged_map_topic" value="$(arg merged_map_topic)"/>
+    <arg name="quiet_slam" value="$(arg quiet_slam)"/>
+    <arg name="robot1_init_x" value="$(arg robot1_x)"/>
+    <arg name="robot1_init_y" value="$(arg robot1_y)"/>
+    <arg name="robot1_init_yaw" value="$(arg robot1_yaw)"/>
+    <arg name="robot2_init_x" value="$(arg robot2_x)"/>
+    <arg name="robot2_init_y" value="$(arg robot2_y)"/>
+    <arg name="robot2_init_yaw" value="$(arg robot2_yaw)"/>
+  </include>
+
+  <!-- 2. Inter-robot priority coordination & collision avoidance -->
+  <node pkg="ctf_navigation" type="robot_coordinator.py"
+        name="robot_coordinator" output="screen">
+    <param name="target_frame" value="$(arg world_frame)"/>
+    <param name="robot_radius" value="0.28"/>
+    <param name="max_avoid_distance" value="3.5"/>
+  </node>
+
+  <!-- 3. Navigation (move_base) for both robots on the /merged_map -->
+  <include file="$(find ctf_navigation)/launch/slam_navigation.launch">
+    <arg name="world_frame" value="$(arg world_frame)"/>
+    <arg name="merged_map_topic" value="$(arg merged_map_topic)"/>
+  </include>
+
+  <!-- 4. Visión: detector de bandera por robot -->
+  <group ns="robot1">
+    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector" output="screen">
+      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
+      <!-- Ajustado para la Raspberry Pi camera por defecto -->
+      <param name="camera_topic" value="camera/image"/>
+      <param name="compressed_camera_topic" value="camera/image/compressed"/>
+      <param name="scan_topic" value="scan"/>
+      <param name="base_frame" value="robot1/base_footprint"/>
+      <param name="map_frame" value="$(arg world_frame)"/>
+    </node>
+  </group>
+
+  <group ns="robot2">
+    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector" output="screen">
+      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
+      <param name="camera_topic" value="camera/image"/>
+      <param name="compressed_camera_topic" value="camera/image/compressed"/>
+      <param name="scan_topic" value="scan"/>
+      <param name="base_frame" value="robot2/base_footprint"/>
+      <param name="map_frame" value="$(arg world_frame)"/>
+    </node>
+  </group>
+
+  <!-- 5. Autonomous exploration + CTF Game Coordinator -->
+  <node pkg="ctf_navigation" type="slam_frontier_explorer_ctf.py"
+        name="slam_frontier_explorer_ctf" output="screen" required="true">
+    <param name="map_frame" value="$(arg world_frame)"/>
+    <param name="map_topic" value="$(arg merged_map_topic)"/>
+    
+    <!-- Todos los parametros originales del CTF aquí -->
+    <param name="exploration_timeout" value="300.0"/>
+    <param name="goal_timeout" value="45.0"/>
+    <param name="min_coverage" value="0.72"/>
+    <param name="gain_scale" value="2.0"/>
+    <param name="log_mode" value="brief"/>
+    <param name="flag_collision_radius" value="0.03"/>
+    <param name="flag_standoff_distance" value="0.20"/>
+    <param name="flag_capture_margin" value="0.08"/>
+    <param name="flag_capture_distance" value="0.60"/>
+
+    <rosparam param="robot1_home" subst_value="True">[$(arg robot1_x), $(arg robot1_y), $(arg robot1_yaw)]</rosparam>
+    <rosparam param="robot2_home" subst_value="True">[$(arg robot2_x), $(arg robot2_y), $(arg robot2_yaw)]</rosparam>
+  </node>
+
+  <!-- 6. RViz -->
+  <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz"
+        args="-d $(find ctf_navigation)/rviz/slam_multi_robot_ctf.rviz"/>
+</launch>
