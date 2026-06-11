@@ -26,4 +26,4 @@ static_layer:
 # over hugging walls. Local costmap stays tighter for execution.
 inflation_layer:
   inflation_radius: 0.30
-  cost_scaling_factor: 8.0
+  cost_scaling_factor: 15.0
