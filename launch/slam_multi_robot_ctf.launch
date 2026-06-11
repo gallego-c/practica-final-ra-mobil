@@ -107,7 +107,7 @@
     <param name="flag_bias_weight" value="0.8"/>
     <param name="territory_penalty" value="0.5"/>
     <param name="frontier_claim_sec" value="35.0"/>
-    <param name="min_goal_clearance" value="0.15"/>
+    <param name="min_goal_clearance" value="0.26"/>
     <param name="robot_radius" value="0.28"/>
     <param name="progress_timeout" value="15.0"/>
     <param name="min_progress_distance" value="0.15"/>
@@ -141,7 +141,7 @@
     <param name="capture_pause_sec" value="3.0"/>
     <param name="flag_memory_timeout" value="120.0"/>
     <param name="flag_support_standoff" value="2.20"/>
-    <param name="flag_global_plan_min_dist" value="1.50"/>
+    <param name="flag_global_plan_min_dist" value="0.85"/>
     <param name="waypoint_reached_dist" value="0.55"/>
     <param name="intercept_enabled" value="true"/>
     <param name="intercept_direct_chase_distance" value="1.25"/>

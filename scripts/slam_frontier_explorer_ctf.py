@@ -1213,16 +1213,8 @@ class SlamFrontierExplorerCtf:
         return gx, gy, gyaw
 
     def _get_global_flag_goal(self, robot_pose, flag_xy, standoff):
-        """Single move_base goal on the standoff ring — global planner routes around walls."""
-        rx, ry, _ = robot_pose
-        fx, fy = flag_xy
-        dx, dy = fx - rx, fy - ry
-        dist = math.hypot(dx, dy)
-        if dist < 1e-3:
-            return fx, fy
-        ux, uy = dx / dist, dy / dist
-        use_standoff = min(standoff, max(0.15, dist - 0.20))
-        return fx - ux * use_standoff, fy - uy * use_standoff
+        """Plan directly to the flag coordinates so the goal is in free space in the flag's room."""
+        return flag_xy[0], flag_xy[1]
 
     def _get_detour_goal(self, robot_pose, flag_xy, flank_sign):
         """Side-step waypoint to leave a narrow gap and replan around obstacles."""
@@ -1245,15 +1237,10 @@ class SlamFrontierExplorerCtf:
         if self.game_state != 'EXPLORING':
             return
         d_flag = math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
-        if support_only and d_flag <= self.flag_support_standoff:
-            client.cancel_all_goals()
-            return
         mb_state = client.get_state()
         now = time.monotonic()
         stuck_count = self._pursuit_stuck_count.get(ns, 0)
-        min_approach_dist = (
-            self.flag_support_standoff if support_only
-            else self._min_reach_distance + 0.15)
+        min_approach_dist = self._min_reach_distance + 0.15
 
         if d_flag < self._pursuit_closest_dist.get(ns, d_flag + 1.0) - 0.03:
             self._pursuit_closest_dist[ns] = d_flag
@@ -1268,16 +1255,12 @@ class SlamFrontierExplorerCtf:
         idle = mb_state not in (
             GoalStatus.ACTIVE, GoalStatus.PENDING, GoalStatus.RECALLING)
 
-        if support_only:
-            no_progress = False
-            oscillating = False
-        else:
-            no_progress = (
-                now - self._pursuit_last_progress_time.get(ns, now) > self.flag_approach_nudge_sec
-                and d_flag >= last_d - 0.03)
-            oscillating = (
-                mb_state in (GoalStatus.ACTIVE, GoalStatus.PENDING)
-                and no_progress and d_flag > min_approach_dist)
+        no_progress = (
+            now - self._pursuit_last_progress_time.get(ns, now) > self.flag_approach_nudge_sec
+            and d_flag >= last_d - 0.03)
+        oscillating = (
+            mb_state in (GoalStatus.ACTIVE, GoalStatus.PENDING)
+            and no_progress and d_flag > min_approach_dist)
 
         use_backoff = False
         if d_flag <= self.flag_approach_backoff_max and (oscillating or (terminal and no_progress)):
@@ -1297,15 +1280,12 @@ class SlamFrontierExplorerCtf:
         start_dist = self._pursuit_start_dist.get(ns, d_flag)
         closest = self._pursuit_closest_dist.get(ns, d_flag)
         made_approach_progress = closest <= start_dist - 0.35
-        if support_only:
-            close_enough_to_refine = True
-            still_far = d_flag > self.flag_support_standoff
-        else:
-            close_enough_to_refine = (
-                d_flag <= self.flag_approach_max_distance
-                and (start_dist <= self.flag_approach_max_distance + 0.30
-                     or made_approach_progress))
-            still_far = d_flag > self.flag_capture_distance + 0.15
+        close_enough_to_refine = (
+            True if support_only else
+            (d_flag <= self.flag_approach_max_distance
+             and (start_dist <= self.flag_approach_max_distance + 0.30
+                  or made_approach_progress)))
+        still_far = d_flag > self.flag_capture_distance + 0.15
         use_direct = close_enough_to_refine or terminal
 
         need_send = (
@@ -1337,15 +1317,15 @@ class SlamFrontierExplorerCtf:
             if stuck_count >= self.flag_approach_detour_after:
                 gx, gy, gyaw = self._get_detour_goal(pose, flag_xy, flank_sign)
                 mode = 'detour'
-            elif d_flag > self.flag_global_plan_min_dist:
-                if support_only:
-                    standoff = self.flag_support_standoff
-                else:
-                    standoff = max(
-                        self._min_reach_distance + 0.05,
-                        self.flag_capture_distance * 0.90)
+            elif d_flag > self.flag_global_plan_min_dist or support_only:
+                # Use a closer standoff to ensure the target is in the same room/free space as the flag,
+                # letting move_base plan paths through doors rather than getting stuck in intermediate walls.
+                # The supporting robot will cancel its goal and stop at flag_support_standoff (2.20m) reactively.
+                standoff = max(
+                    self._min_reach_distance + 0.05,
+                    self.flag_capture_distance * 0.90)
                 gx, gy = self._get_global_flag_goal(pose, flag_xy, standoff)
-                gyaw = math.atan2(flag_xy[1] - gy, flag_xy[0] - gx)
+                gyaw = math.atan2(flag_xy[1] - pose[1], flag_xy[0] - pose[0])
                 mode = 'global-flag'
             else:
                 if not support_only and not use_direct and grid is not None:
