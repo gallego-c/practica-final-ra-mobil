@@ -122,10 +122,9 @@ class RobotCoordinator:
             self.yielding_robot = None
 
     def _yield_twist(self, ns):
-        """Back away and turn slightly instead of just spinning in place."""
+        """Back away in a straight line to clear the path for the other robot."""
         twist = Twist()
         twist.linear.x = -0.10  # back up slowly
-        twist.angular.z = -0.4 if ns == 'robot1' else 0.4
         return twist
 
     def cmd_cb1(self, msg):

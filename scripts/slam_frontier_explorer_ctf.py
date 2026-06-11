@@ -1029,17 +1029,15 @@ class SlamFrontierExplorerCtf:
         return False
 
     def _spin_to_scan(self, ns, duration=2.0):
-        pub = self._cmd_pubs[ns]
-        twist = Twist()
-        twist.angular.z = 0.8
-        end = rospy.Time.now() + rospy.Duration(min(duration, 2.0))
+        """Pause briefly to let the map update. No physical rotation needed
+        because the TurtleBot3 LIDAR already covers 360 degrees."""
+        wait = min(duration, 2.0)
+        end = rospy.Time.now() + rospy.Duration(wait)
         rate = rospy.Rate(10)
         while rospy.Time.now() < end and not rospy.is_shutdown() and not self._stop.is_set():
             if self.game_state != 'EXPLORING':
                 break
-            pub.publish(twist)
             rate.sleep()
-        pub.publish(Twist())
 
     def _should_send_flag_goal(self, ns, fx, fy, pursuing=False, d_flag=None, support_only=False):
         now = rospy.Time.now().to_sec()
