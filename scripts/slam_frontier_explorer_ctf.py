@@ -812,7 +812,7 @@ class SlamFrontierExplorerCtf:
             ]
             if not other_dists:
                 continue
-            separation = my_dist - min(other_dists)
+            separation = min(other_dists) - my_dist
             separation -= self._territory_penalty_for(ns, wx, wy) * 0.1
             if separation > best_sep:
                 best_sep = separation
@@ -1016,13 +1016,7 @@ class SlamFrontierExplorerCtf:
                     best_dist = dist
                     last_progress = rospy.Time.now()
 
-            # Reset progress timeout if robots are close to avoid canceling goals due to yielding/avoidance
-            other_ns = 'robot2' if ns == 'robot1' else 'robot1'
-            other_pose = self._get_robot_pose(other_ns + '/base_footprint')
-            if pose is not None and other_pose is not None:
-                d_robots = math.hypot(pose[0] - other_pose[0], pose[1] - other_pose[1])
-                if d_robots < 2.2:
-                    last_progress = rospy.Time.now()
+            # Enforce progress timeout even when close to resolve stuck situations/deadlocks
 
             if (rospy.Time.now() - last_progress).to_sec() > self.progress_timeout:
                 self._log_verbose_warn(
@@ -1923,7 +1917,9 @@ class SlamFrontierExplorerCtf:
                         consecutive_fails = 0
                 else:
                     self._log_verbose(
-                        '%s: Goal cancelled due to proximity/yielding (not a failure)', ns)
+                        '%s: Goal cancelled due to proximity/yielding (not a failure). '
+                        'Blacklisting temporarily to resolve congestion.', ns)
+                    self._blacklist_goal(wx, wy, duration=15.0)
 
             rospy.sleep(0.2)
 
