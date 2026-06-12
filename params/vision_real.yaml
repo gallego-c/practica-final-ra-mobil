@@ -1,0 +1,32 @@
+# El bringup publica cv_camera/image_raw[/compressed], NO camera/rgb/... (eso es Gazebo).
+# Desactivamos el topic raw ("") para evitar transferir frames pesados sin comprimir sobre WiFi.
+camera_topic: ""
+compressed_camera_topic: "cv_camera/image_raw/compressed"
+scan_topic: "scan"
+
+base_frame: "base_footprint"
+map_frame: "map"
+
+# FOV horizontal cámara Waffle Pi (~62.2°).
+horizontal_fov: 1.085595
+
+min_blob_area: 150
+max_detection_distance: 5.0
+range_window: 0.25
+
+# Desactivar comprobación de imagen obsoleta (0 = desactivado).
+# En multi-máquina los relojes no están sincronizados y rechazaría todos los frames.
+max_image_age: 0
+
+h_low1: 0
+h_high1: 15
+h_low2: 165
+h_high2: 180
+s_min: 100
+v_min: 60
+
+use_rgb_fallback: false
+rgb_red_min: 100
+rgb_red_dominance: 1.3
+
+publish_debug: true

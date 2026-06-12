@@ -1,0 +1,101 @@
+<launch>
+  <!-- ==========================================================================
+       REAL ROBOT FLAG DETECTION (vision-only)
+       Runs flag_detector for both robots + camera visualization.
+       Assumes turtlebot3_bringup is already running on each robot SBC.
+
+        Real TurtleBot3 camera topics (cv_camera en bringup):
+          /robotN/cv_camera/image_raw/compressed
+        NOT the Gazebo path camera/rgb/image_raw/compressed.
+
+       Prerequisites:
+         - Bringup with namespace robot1 / robot2 on each SBC
+         - Same ROS_MASTER_URI on all machines
+         - TURTLEBOT3_MODEL=waffle_pi on robot SBCs
+
+       Find actual topics after bringup:
+         rostopic list | grep -E 'image|camera'
+
+       Sanity check:
+          rostopic hz /robot1/cv_camera/image_raw/compressed
+          rostopic hz /robot2/cv_camera/image_raw/compressed
+
+       If camera has no robot namespace (publishes /camera/...), remap per robot:
+         roslaunch ctf_navigation real_robot_flag_vision.launch \
+           robot1_camera_remap:=/camera/image_raw/compressed \
+           robot2_camera_remap:=/camera2/image_raw/compressed
+
+       Usage:
+         roslaunch ctf_navigation real_robot_flag_vision.launch
+         roslaunch ctf_navigation real_robot_flag_vision.launch image_source:=camera
+         roslaunch ctf_navigation real_robot_flag_vision.launch viz:=rviz
+
+       Monitor detection:
+         rostopic echo /robot1/flag_detector/flag_found
+         rostopic echo /robot2/flag_detector/flag_found
+       ========================================================================== -->
+
+  <arg name="robot1_ns" default="robot1"/>
+  <arg name="robot2_ns" default="robot2"/>
+  <arg name="map_frame" default="map"/>
+  <arg name="viz" default="rqt"/>
+  <!-- debug = flag_detector overlay | camera = live compressed feed from bringup -->
+  <arg name="image_source" default="debug"/>
+  <arg name="camera_topic" default="cv_camera/image_raw"/>
+  <arg name="compressed_camera_topic" default="cv_camera/image_raw/compressed"/>
+  <!-- Optional remaps when bringup camera is outside the robot namespace -->
+  <arg name="robot1_camera_remap" default=""/>
+  <arg name="robot2_camera_remap" default=""/>
+
+  <arg name="robot1_image_topic"
+       default="$(eval '/' + arg('robot1_ns') + '/flag_detector/debug_image/compressed' if arg('image_source') == 'debug' else '/' + arg('robot1_ns') + '/cv_camera/image_raw/compressed')"/>
+  <arg name="robot2_image_topic"
+       default="$(eval '/' + arg('robot2_ns') + '/flag_detector/debug_image/compressed' if arg('image_source') == 'debug' else '/' + arg('robot2_ns') + '/cv_camera/image_raw/compressed')"/>
+
+  <param name="/use_sim_time" value="false"/>
+
+  <!-- Flag detector robot 1 -->
+  <group ns="$(arg robot1_ns)">
+    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector" output="screen">
+      <rosparam file="$(find ctf_navigation)/params/vision_real.yaml" command="load"/>
+      <param name="camera_topic" value="$(arg camera_topic)"/>
+      <param name="compressed_camera_topic" value="$(arg compressed_camera_topic)"/>
+      <param name="scan_topic" value="scan"/>
+      <param name="base_frame" value="$(arg robot1_ns)/base_footprint"/>
+      <param name="map_frame" value="$(arg map_frame)"/>
+      <remap from="$(arg compressed_camera_topic)" to="$(arg robot1_camera_remap)"
+             if="$(eval arg('robot1_camera_remap') != '')"/>
+      <remap from="$(arg camera_topic)" to="$(arg robot1_camera_remap)"
+             if="$(eval arg('robot1_camera_remap') != '' and arg('camera_topic') != arg('compressed_camera_topic'))"/>
+    </node>
+  </group>
+
+  <!-- Flag detector robot 2 -->
+  <group ns="$(arg robot2_ns)">
+    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector" output="screen">
+      <rosparam file="$(find ctf_navigation)/params/vision_real.yaml" command="load"/>
+      <param name="camera_topic" value="$(arg camera_topic)"/>
+      <param name="compressed_camera_topic" value="$(arg compressed_camera_topic)"/>
+      <param name="scan_topic" value="scan"/>
+      <param name="base_frame" value="$(arg robot2_ns)/base_footprint"/>
+      <param name="map_frame" value="$(arg map_frame)"/>
+      <remap from="$(arg compressed_camera_topic)" to="$(arg robot2_camera_remap)"
+             if="$(eval arg('robot2_camera_remap') != '')"/>
+      <remap from="$(arg camera_topic)" to="$(arg robot2_camera_remap)"
+             if="$(eval arg('robot2_camera_remap') != '' and arg('camera_topic') != arg('compressed_camera_topic'))"/>
+    </node>
+  </group>
+
+  <!-- rqt image viewers (one window per robot) -->
+  <node pkg="rqt_image_view" type="rqt_image_view" name="camera_view_robot1"
+        args="$(arg robot1_image_topic)"
+        if="$(eval arg('viz') in ['rqt', 'both'])"/>
+  <node pkg="rqt_image_view" type="rqt_image_view" name="camera_view_robot2"
+        args="$(arg robot2_image_topic)"
+        if="$(eval arg('viz') in ['rqt', 'both'])"/>
+
+  <!-- RViz with flag-detection config -->
+  <node pkg="rviz" type="rviz" name="rviz"
+        args="-d $(find ctf_navigation)/rviz/flag_detection.rviz"
+        if="$(eval arg('viz') in ['rviz', 'both'])"/>
+</launch>

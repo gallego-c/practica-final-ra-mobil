@@ -42,6 +42,7 @@ struct FlagDetectorConfig
   double horizontal_fov = 1.085595;
   double max_detection_distance = 5.0;
   double range_window = 0.10;
+  double max_image_age = 1.0;  // 0 = disable stale-image check (for real robots with clock skew)
   bool publish_debug = true;
   ctf_navigation::vision::RedDetectorConfig red;
 };
@@ -63,17 +64,26 @@ public:
     if (cfg_.publish_debug)
     {
       debug_pub_ = pnh.advertise<sensor_msgs::Image>("debug_image", 1);
+      debug_compressed_pub_ = pnh.advertise<sensor_msgs::CompressedImage>("debug_image/compressed", 1);
     }
 
     scan_sub_ = robot_nh.subscribe(cfg_.scan_topic, 1, &FlagDetectorNode::onScan, this);
-    image_sub_ =
-        robot_nh.subscribe(cfg_.camera_topic, 1, &FlagDetectorNode::onImage, this);
-    compressed_image_sub_ = robot_nh.subscribe(
-        cfg_.compressed_camera_topic, 1, &FlagDetectorNode::onCompressedImage, this);
+    if (!cfg_.camera_topic.empty())
+    {
+      image_sub_ =
+          robot_nh.subscribe(cfg_.camera_topic, 1, &FlagDetectorNode::onImage, this,
+                             ros::TransportHints().unreliable());
+    }
+    if (!cfg_.compressed_camera_topic.empty())
+    {
+      compressed_image_sub_ = robot_nh.subscribe(
+          cfg_.compressed_camera_topic, 1, &FlagDetectorNode::onCompressedImage, this,
+          ros::TransportHints().unreliable());
+    }
 
     ROS_INFO("flag_detector: camera=%s compressed=%s scan=%s base=%s",
-             robot_nh.resolveName(cfg_.camera_topic).c_str(),
-             robot_nh.resolveName(cfg_.compressed_camera_topic).c_str(),
+             cfg_.camera_topic.empty() ? "(disabled)" : robot_nh.resolveName(cfg_.camera_topic).c_str(),
+             cfg_.compressed_camera_topic.empty() ? "(disabled)" : robot_nh.resolveName(cfg_.compressed_camera_topic).c_str(),
              robot_nh.resolveName(cfg_.scan_topic).c_str(),
              cfg_.base_frame.c_str());
   }
@@ -95,6 +105,12 @@ private:
   void onImage(const sensor_msgs::Image::ConstPtr& msg)
   {
     images_received_ = true;
+
+    if (isFrameTooOld(msg->header.stamp))
+    {
+      ROS_WARN_THROTTLE(2.0, "Dropping delayed raw image frame to maintain real-time flow");
+      return;
+    }
 
     cv::Mat bgr;
     try
@@ -144,6 +160,12 @@ private:
   {
     images_received_ = true;
 
+    if (isFrameTooOld(msg->header.stamp))
+    {
+      ROS_WARN_THROTTLE(2.0, "Dropping delayed compressed image frame to maintain real-time flow");
+      return;
+    }
+
     const cv::Mat encoded(1, static_cast<int>(msg->data.size()), CV_8UC1,
                           const_cast<unsigned char*>(msg->data.data()));
     const cv::Mat bgr = cv::imdecode(encoded, cv::IMREAD_COLOR);
@@ -159,10 +181,14 @@ private:
 
   void processBgrFrame(const cv::Mat& bgr, const ros::Time& stamp)
   {
-    if (!stamp.isZero() && (ros::Time::now() - stamp).toSec() > 1.0)
+    if (cfg_.max_image_age > 0.0 && !stamp.isZero())
     {
-      ROS_WARN_THROTTLE(2.0, "Stale image received (age = %.2f s), ignoring", (ros::Time::now() - stamp).toSec());
-      return;
+      const double age = (ros::Time::now() - stamp).toSec();
+      if (std::abs(age) > cfg_.max_image_age)
+      {
+        ROS_WARN_THROTTLE(2.0, "Stale image received (age = %.2f s), ignoring", age);
+        return;
+      }
     }
 
     const auto det = ctf_navigation::vision::detectRedBlob(bgr, cfg_.red);
@@ -193,7 +219,7 @@ private:
 
     if (cfg_.publish_debug)
     {
-      publishDebug(bgr, det, estimate);
+      publishDebug(bgr, det, estimate, stamp);
     }
   }
 
@@ -207,10 +233,10 @@ private:
         ROS_WARN_THROTTLE(5.0, "Flag visible but no LaserScan yet");
         return boost::none;
       }
-      if (!stamp.isZero() && !last_scan_.header.stamp.isZero())
+      if (cfg_.max_image_age > 0.0 && !stamp.isZero() && !last_scan_.header.stamp.isZero())
       {
         double scan_age = std::abs((last_scan_.header.stamp - stamp).toSec());
-        if (scan_age > 1.0)
+        if (scan_age > cfg_.max_image_age)
         {
           ROS_WARN_THROTTLE(2.0, "LaserScan and image are unsynchronized (diff = %.2f s)", scan_age);
           return boost::none;
@@ -246,7 +272,8 @@ private:
 
   void publishDebug(const cv::Mat& frame,
                     const ctf_navigation::vision::RedDetection& det,
-                    const boost::optional<geometry_msgs::PoseStamped>& estimate)
+                    const boost::optional<geometry_msgs::PoseStamped>& estimate,
+                    const ros::Time& stamp)
   {
     cv::Mat dbg = frame.clone();
     if (!det.mask.empty())
@@ -282,12 +309,57 @@ private:
     }
     try
     {
-      const auto out = cv_bridge::CvImage(std_msgs::Header(), "bgr8", dbg).toImageMsg();
+      std_msgs::Header header;
+      header.stamp = stamp;
+      header.frame_id = cfg_.base_frame;
+
+      const auto out = cv_bridge::CvImage(header, "bgr8", dbg).toImageMsg();
       debug_pub_.publish(out);
+
+      // Publish compressed debug image as well
+      sensor_msgs::CompressedImage compressed_out;
+      compressed_out.header = header;
+      compressed_out.format = "jpeg";
+      if (cv::imencode(".jpg", dbg, compressed_out.data))
+      {
+        debug_compressed_pub_.publish(compressed_out);
+      }
     }
     catch (const cv_bridge::Exception&)
     {
     }
+  }
+
+  bool isFrameTooOld(const ros::Time& stamp)
+  {
+    if (stamp.isZero())
+    {
+      return false;
+    }
+
+    double raw_age = (ros::Time::now() - stamp).toSec();
+    if (!offset_initialized_)
+    {
+      estimated_offset_ = raw_age;
+      offset_initialized_ = true;
+    }
+    else
+    {
+      // Track minimum latency (best-case network transit + clock skew)
+      if (raw_age < estimated_offset_)
+      {
+        estimated_offset_ = 0.95 * estimated_offset_ + 0.05 * raw_age;
+      }
+      else
+      {
+        // Slowly drift upwards to accommodate clock drifts or network latency changes
+        estimated_offset_ = 0.999 * estimated_offset_ + 0.001 * raw_age;
+      }
+    }
+
+    double corrected_age = raw_age - estimated_offset_;
+    // Drop frames that are delayed by more than 0.3 seconds relative to the best case
+    return (corrected_age > 0.3);
   }
 
   FlagDetectorConfig cfg_;
@@ -297,6 +369,8 @@ private:
   std::mutex scan_mutex_;
   sensor_msgs::LaserScan last_scan_;
   bool images_received_ = false;
+  double estimated_offset_ = 0.0;
+  bool offset_initialized_ = false;
 
   ros::Subscriber scan_sub_;
   ros::Subscriber image_sub_;
@@ -304,6 +378,7 @@ private:
   ros::Publisher found_pub_;
   ros::Publisher estimate_pub_;
   ros::Publisher debug_pub_;
+  ros::Publisher debug_compressed_pub_;
 };
 
 FlagDetectorConfig loadConfig(ros::NodeHandle& pnh)
@@ -319,6 +394,7 @@ FlagDetectorConfig loadConfig(ros::NodeHandle& pnh)
   pnh.param("max_detection_distance", cfg.max_detection_distance,
             cfg.max_detection_distance);
   pnh.param("range_window", cfg.range_window, cfg.range_window);
+  pnh.param("max_image_age", cfg.max_image_age, cfg.max_image_age);
   pnh.param("publish_debug", cfg.publish_debug, cfg.publish_debug);
   pnh.param("min_blob_area", cfg.red.min_blob_area, cfg.red.min_blob_area);
   pnh.param("h_low1", cfg.red.h_low1, cfg.red.h_low1);
@@ -350,8 +426,8 @@ int main(int argc, char** argv)
   {
     ros::spinOnce();
     ROS_WARN_THROTTLE(5.0,
-                      "No camera images yet — check camera_topic and "
-                      "rostopic hz /robot1/camera/rgb/image_raw/compressed");
+                      "No camera images yet — check camera_topic / "
+                      "compressed_camera_topic (rostopic list | grep image)");
     rate.sleep();
   }
   if (!node.hasReceivedImages())
@@ -362,3 +438,4 @@ int main(int argc, char** argv)
   ros::spin();
   return 0;
 }
+
