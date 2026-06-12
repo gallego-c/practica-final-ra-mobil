@@ -48,9 +48,9 @@
   <arg name="robot2_camera_remap" default=""/>
 
   <arg name="robot1_image_topic"
-       default="$(eval '/' + arg('robot1_ns') + '/flag_detector/debug_image' if arg('image_source') == 'debug' else '/' + arg('robot1_ns') + '/cv_camera/image_raw/compressed')"/>
+       default="$(eval '/' + arg('robot1_ns') + '/flag_detector/debug_image/compressed' if arg('image_source') == 'debug' else '/' + arg('robot1_ns') + '/cv_camera/image_raw/compressed')"/>
   <arg name="robot2_image_topic"
-       default="$(eval '/' + arg('robot2_ns') + '/flag_detector/debug_image' if arg('image_source') == 'debug' else '/' + arg('robot2_ns') + '/cv_camera/image_raw/compressed')"/>
+       default="$(eval '/' + arg('robot2_ns') + '/flag_detector/debug_image/compressed' if arg('image_source') == 'debug' else '/' + arg('robot2_ns') + '/cv_camera/image_raw/compressed')"/>
 
   <param name="/use_sim_time" value="false"/>
 

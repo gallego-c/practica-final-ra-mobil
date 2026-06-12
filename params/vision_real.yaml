@@ -1,6 +1,6 @@
-# Parámetros del flag_detector para TurtleBot3 real (turtlebot3_bringup).
 # El bringup publica cv_camera/image_raw[/compressed], NO camera/rgb/... (eso es Gazebo).
-camera_topic: "cv_camera/image_raw"
+# Desactivamos el topic raw ("") para evitar transferir frames pesados sin comprimir sobre WiFi.
+camera_topic: ""
 compressed_camera_topic: "cv_camera/image_raw/compressed"
 scan_topic: "scan"
 
@@ -13,6 +13,10 @@ horizontal_fov: 1.085595
 min_blob_area: 150
 max_detection_distance: 5.0
 range_window: 0.25
+
+# Desactivar comprobación de imagen obsoleta (0 = desactivado).
+# En multi-máquina los relojes no están sincronizados y rechazaría todos los frames.
+max_image_age: 0
 
 h_low1: 0
 h_high1: 15

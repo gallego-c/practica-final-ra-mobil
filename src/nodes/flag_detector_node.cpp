@@ -42,6 +42,7 @@ struct FlagDetectorConfig
   double horizontal_fov = 1.085595;
   double max_detection_distance = 5.0;
   double range_window = 0.10;
+  double max_image_age = 1.0;  // 0 = disable stale-image check (for real robots with clock skew)
   bool publish_debug = true;
   ctf_navigation::vision::RedDetectorConfig red;
 };
@@ -63,17 +64,24 @@ public:
     if (cfg_.publish_debug)
     {
       debug_pub_ = pnh.advertise<sensor_msgs::Image>("debug_image", 1);
+      debug_compressed_pub_ = pnh.advertise<sensor_msgs::CompressedImage>("debug_image/compressed", 1);
     }
 
     scan_sub_ = robot_nh.subscribe(cfg_.scan_topic, 1, &FlagDetectorNode::onScan, this);
-    image_sub_ =
-        robot_nh.subscribe(cfg_.camera_topic, 1, &FlagDetectorNode::onImage, this);
-    compressed_image_sub_ = robot_nh.subscribe(
-        cfg_.compressed_camera_topic, 1, &FlagDetectorNode::onCompressedImage, this);
+    if (!cfg_.camera_topic.empty())
+    {
+      image_sub_ =
+          robot_nh.subscribe(cfg_.camera_topic, 1, &FlagDetectorNode::onImage, this);
+    }
+    if (!cfg_.compressed_camera_topic.empty())
+    {
+      compressed_image_sub_ = robot_nh.subscribe(
+          cfg_.compressed_camera_topic, 1, &FlagDetectorNode::onCompressedImage, this);
+    }
 
     ROS_INFO("flag_detector: camera=%s compressed=%s scan=%s base=%s",
-             robot_nh.resolveName(cfg_.camera_topic).c_str(),
-             robot_nh.resolveName(cfg_.compressed_camera_topic).c_str(),
+             cfg_.camera_topic.empty() ? "(disabled)" : robot_nh.resolveName(cfg_.camera_topic).c_str(),
+             cfg_.compressed_camera_topic.empty() ? "(disabled)" : robot_nh.resolveName(cfg_.compressed_camera_topic).c_str(),
              robot_nh.resolveName(cfg_.scan_topic).c_str(),
              cfg_.base_frame.c_str());
   }
@@ -159,10 +167,14 @@ private:
 
   void processBgrFrame(const cv::Mat& bgr, const ros::Time& stamp)
   {
-    if (!stamp.isZero() && (ros::Time::now() - stamp).toSec() > 1.0)
+    if (cfg_.max_image_age > 0.0 && !stamp.isZero())
     {
-      ROS_WARN_THROTTLE(2.0, "Stale image received (age = %.2f s), ignoring", (ros::Time::now() - stamp).toSec());
-      return;
+      const double age = (ros::Time::now() - stamp).toSec();
+      if (std::abs(age) > cfg_.max_image_age)
+      {
+        ROS_WARN_THROTTLE(2.0, "Stale image received (age = %.2f s), ignoring", age);
+        return;
+      }
     }
 
     const auto det = ctf_navigation::vision::detectRedBlob(bgr, cfg_.red);
@@ -193,7 +205,7 @@ private:
 
     if (cfg_.publish_debug)
     {
-      publishDebug(bgr, det, estimate);
+      publishDebug(bgr, det, estimate, stamp);
     }
   }
 
@@ -246,7 +258,8 @@ private:
 
   void publishDebug(const cv::Mat& frame,
                     const ctf_navigation::vision::RedDetection& det,
-                    const boost::optional<geometry_msgs::PoseStamped>& estimate)
+                    const boost::optional<geometry_msgs::PoseStamped>& estimate,
+                    const ros::Time& stamp)
   {
     cv::Mat dbg = frame.clone();
     if (!det.mask.empty())
@@ -282,8 +295,21 @@ private:
     }
     try
     {
-      const auto out = cv_bridge::CvImage(std_msgs::Header(), "bgr8", dbg).toImageMsg();
+      std_msgs::Header header;
+      header.stamp = stamp;
+      header.frame_id = cfg_.base_frame;
+
+      const auto out = cv_bridge::CvImage(header, "bgr8", dbg).toImageMsg();
       debug_pub_.publish(out);
+
+      // Publish compressed debug image as well
+      sensor_msgs::CompressedImage compressed_out;
+      compressed_out.header = header;
+      compressed_out.format = "jpeg";
+      if (cv::imencode(".jpg", dbg, compressed_out.data))
+      {
+        debug_compressed_pub_.publish(compressed_out);
+      }
     }
     catch (const cv_bridge::Exception&)
     {
@@ -304,6 +330,7 @@ private:
   ros::Publisher found_pub_;
   ros::Publisher estimate_pub_;
   ros::Publisher debug_pub_;
+  ros::Publisher debug_compressed_pub_;
 };
 
 FlagDetectorConfig loadConfig(ros::NodeHandle& pnh)
@@ -319,6 +346,7 @@ FlagDetectorConfig loadConfig(ros::NodeHandle& pnh)
   pnh.param("max_detection_distance", cfg.max_detection_distance,
             cfg.max_detection_distance);
   pnh.param("range_window", cfg.range_window, cfg.range_window);
+  pnh.param("max_image_age", cfg.max_image_age, cfg.max_image_age);
   pnh.param("publish_debug", cfg.publish_debug, cfg.publish_debug);
   pnh.param("min_blob_area", cfg.red.min_blob_area, cfg.red.min_blob_area);
   pnh.param("h_low1", cfg.red.h_low1, cfg.red.h_low1);
