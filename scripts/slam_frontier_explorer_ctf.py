@@ -918,33 +918,23 @@ class SlamFrontierExplorerCtf:
         if travel < 0.20:
             return None
 
-        # 1. If target is close enough, we try to go direct
-        if travel <= 2.0:
-            snapped = self._snap_goal_to_free(grid, tx, ty)
-            if snapped is not None:
-                tx, ty = snapped
-                mx, my = world_to_map(tx, ty, grid.info)
-                if self._cell_has_clearance(grid, mx, my):
-                    yaw = math.atan2(ty - robot_pose[1], tx - robot_pose[0])
-                    return tx, ty, yaw
+        # 1. First, always try to plan directly to the target if it is in a safe, free cell
+        snapped = self._snap_goal_to_free(grid, tx, ty)
+        if snapped is not None:
+            tx, ty = snapped
+            mx, my = world_to_map(tx, ty, grid.info)
+            if self._cell_has_clearance(grid, mx, my):
+                yaw = math.atan2(ty - robot_pose[1], tx - robot_pose[0])
+                return tx, ty, yaw
 
-        # 2. If target is far or direct failed, and we allow partial, find a waypoint toward target
+        # 2. Fallback: if the direct target is not safe (e.g. inside wall or unknown space),
+        # and we allow partial goals, find a free waypoint in mapped space towards the target
         if allow_partial:
             step = self._find_map_goal_toward(grid, robot_pose, target_xy)
             if step is not None:
                 sx, sy = step
                 yaw = math.atan2(sy - robot_pose[1], sx - robot_pose[0])
                 return sx, sy, yaw
-
-        # 3. Fallback: if partial failed or target is far and direct snap wasn't attempted, try direct
-        if travel > 2.0:
-            snapped = self._snap_goal_to_free(grid, tx, ty)
-            if snapped is not None:
-                tx, ty = snapped
-                mx, my = world_to_map(tx, ty, grid.info)
-                if self._cell_has_clearance(grid, mx, my):
-                    yaw = math.atan2(ty - robot_pose[1], tx - robot_pose[0])
-                    return tx, ty, yaw
 
         return None
 
@@ -1445,6 +1435,17 @@ class SlamFrontierExplorerCtf:
     def _send_pursuer_intercept(self, carrier_pose, pursuer_pose):
         home = self.homes[self.carrier_ns]
         gx, gy, gyaw = self._make_interception_goal(carrier_pose, pursuer_pose, home)
+        # Offset target to be outside the carrier's physical footprint if targeting the carrier directly
+        cx, cy, _ = carrier_pose
+        if math.hypot(gx - cx, gy - cy) < 1e-3:
+            px, py, _ = pursuer_pose
+            dx = px - cx
+            dy = py - cy
+            dist = math.hypot(dx, dy)
+            if dist > 0.55:
+                gx = cx + (dx / dist) * 0.50
+                gy = cy + (dy / dist) * 0.50
+
         resolved = self._resolve_chase_goal(
             self.pursuer_ns, pursuer_pose, (gx, gy), allow_partial=True)
         if resolved is None:
@@ -1457,6 +1458,7 @@ class SlamFrontierExplorerCtf:
         self._has_intercept_goal = True
         self._intercept_anchor = (carrier_pose[0], carrier_pose[1])
         self._pursuer_was_succeeded = False
+        self._last_direct_chase_sent = time.monotonic()
         self._last_pursuer_progress_dist = math.hypot(
             pursuer_pose[0] - gx, pursuer_pose[1] - gy)
         self._last_pursuer_progress_time = time.monotonic()
@@ -1464,8 +1466,17 @@ class SlamFrontierExplorerCtf:
     def _send_pursuer_direct_chase(self, carrier_pose, pursuer_pose):
         cx, cy, _ = carrier_pose
         px, py, _ = pursuer_pose
+        # Offset the target to be outside the carrier's footprint
+        tx, ty = cx, cy
+        dx = px - cx
+        dy = py - cy
+        dist = math.hypot(dx, dy)
+        if dist > 0.55:
+            tx = cx + (dx / dist) * 0.50
+            ty = cy + (dy / dist) * 0.50
+
         resolved = self._resolve_chase_goal(
-            self.pursuer_ns, pursuer_pose, (cx, cy), allow_partial=True)
+            self.pursuer_ns, pursuer_pose, (tx, ty), allow_partial=True)
         if resolved is None:
             self._log_verbose_warn(
                 'CHASE: pursuer %s no safe chase step toward carrier yet',
@@ -1685,12 +1696,15 @@ class SlamFrontierExplorerCtf:
             (now - self._last_pursuer_progress_time) >= 8.0 and pursuer_active)
 
         chase_ready = time.monotonic() - self._chase_started > 1.0
+        time_since_refresh = now - self._last_direct_chase_sent
         refresh_pursuer = chase_ready and (
             not self._has_intercept_goal or
             pursuer_failed or
             pursuer_succeeded or
             pursuer_stuck or
-            carrier_move >= self.direct_chase_carrier_move)
+            (carrier_move >= self.direct_chase_carrier_move and
+             time_since_refresh >= self.direct_chase_refresh_sec)
+        )
         if refresh_pursuer:
             if d <= self.intercept_direct_chase_distance or not self.intercept_enabled:
                 self._send_pursuer_direct_chase(cpose, ppose)
