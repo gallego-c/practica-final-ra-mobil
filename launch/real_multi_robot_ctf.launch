@@ -93,6 +93,10 @@
     <param name="flag_standoff_distance" value="0.20"/>
     <param name="flag_capture_margin" value="0.08"/>
     <param name="flag_capture_distance" value="0.60"/>
+    <!-- Evita captura falsa al arrancar: exige persecución real antes de capturar -->
+    <param name="flag_capture_min_pursuit_sec" value="4.0"/>
+    <param name="flag_capture_min_progress" value="0.20"/>
+    <param name="chase_home_min_travel_from_capture" value="0.50"/>
 
     <rosparam param="robot1_home" subst_value="True">[$(arg robot1_x), $(arg robot1_y), $(arg robot1_yaw)]</rosparam>
     <rosparam param="robot2_home" subst_value="True">[$(arg robot2_x), $(arg robot2_y), $(arg robot2_yaw)]</rosparam>

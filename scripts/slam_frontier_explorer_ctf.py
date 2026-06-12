@@ -133,6 +133,8 @@ class SlamFrontierExplorerCtf:
             rospy.get_param('~chase_clearance_reached_dist', 0.20))
         self.chase_clearance_min_travel = float(
             rospy.get_param('~chase_clearance_min_travel', 0.25))
+        self.chase_home_min_travel_from_capture = float(
+            rospy.get_param('~chase_home_min_travel_from_capture', 0.50))
         self.intercept_enabled = bool(rospy.get_param('~intercept_enabled', True))
         self.intercept_direct_chase_distance = float(
             rospy.get_param('~intercept_direct_chase_distance', 1.25))
@@ -179,6 +181,7 @@ class SlamFrontierExplorerCtf:
         self._last_carrier_progress_home_dist = -1.0
         self._last_pursuer_progress_dist = -1.0
         self._last_pursuer_progress_time = 0.0
+        self._capture_carrier_pose = None
 
         self.robots = rospy.get_param('~robots', [
             {'ns': 'robot1', 'base_frame': 'robot1/base_footprint'},
@@ -324,6 +327,17 @@ class SlamFrontierExplorerCtf:
             self.flag_estimate_time[ns] = rospy.Time.now().to_sec()
             self.last_known_flag_xy = self.flag_estimate[ns]
 
+    def _is_spawn_false_positive_estimate(self, ns, flag_xy):
+        """Vision+LIDAR often places the flag on the robot's own home at startup."""
+        home = self.homes.get(ns, (0.0, 0.0, 0.0))
+        if math.hypot(flag_xy[0] - home[0], flag_xy[1] - home[1]) >= 0.40:
+            return False
+        pose = self._get_robot_pose(ns + '/base_footprint')
+        if pose is None:
+            return False
+        return (math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
+                <= self.flag_capture_distance)
+
     def _has_fresh_flag_estimate(self, ns):
         """Fresh vision estimate for this robot (same logic as RobotAgent::hasFreshFlagEstimate)."""
         with self.flag_lock:
@@ -332,7 +346,10 @@ class SlamFrontierExplorerCtf:
             age = rospy.Time.now().to_sec() - self.flag_estimate_time[ns]
             if age > self.flag_memory_timeout:
                 return False, None
-            return True, self.flag_estimate[ns]
+            xy = self.flag_estimate[ns]
+        if self._is_spawn_false_positive_estimate(ns, xy):
+            return False, None
+        return True, xy
 
     def _get_fresh_flag_estimate(self, ns):
         """Own estimate if fresh, otherwise teammate's (shared flag location)."""
@@ -581,6 +598,32 @@ class SlamFrontierExplorerCtf:
 
             d_flag = math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
             if d_flag > self.flag_capture_distance:
+                self._close_to_flag_since.pop(ns, None)
+                continue
+
+            pursuit_start = self._pursuit_start_time.get(ns)
+            if pursuit_start is None:
+                self._close_to_flag_since.pop(ns, None)
+                continue
+            pursuit_duration = now - pursuit_start
+            if pursuit_duration < self.flag_capture_min_pursuit_sec:
+                self._log_verbose(
+                    '%s: close to flag but pursuit only %.1f/%.1f s',
+                    ns, pursuit_duration, self.flag_capture_min_pursuit_sec)
+                continue
+
+            start_dist = self._pursuit_start_dist.get(ns, d_flag)
+            closest = self._pursuit_closest_dist.get(ns, d_flag)
+            progress = start_dist - closest
+            if progress < self.flag_capture_min_progress:
+                self._log_verbose(
+                    '%s: no approach progress (%.2f/%.2f m); start=%.2f closest=%.2f',
+                    ns, progress, self.flag_capture_min_progress,
+                    start_dist, closest)
+                self._close_to_flag_since.pop(ns, None)
+                continue
+
+            if self._is_spawn_false_positive_estimate(ns, flag_xy):
                 self._close_to_flag_since.pop(ns, None)
                 continue
 
@@ -1595,6 +1638,17 @@ class SlamFrontierExplorerCtf:
             return
 
         if carrier_home_dist <= self.waypoint_reached_dist:
+            if self._capture_carrier_pose is not None:
+                travel_from_capture = math.hypot(
+                    cpose[0] - self._capture_carrier_pose[0],
+                    cpose[1] - self._capture_carrier_pose[1])
+                if travel_from_capture < self.chase_home_min_travel_from_capture:
+                    self._log_verbose_warn(
+                        'CHASE: %s near home (%.2fm) but only %.2fm from capture '
+                        '(need %.2fm) — not a valid return',
+                        self.carrier_ns, carrier_home_dist, travel_from_capture,
+                        self.chase_home_min_travel_from_capture)
+                    return
             self._log_banner(
                 '=== CARRIER %s REACHED HOME (%.2fm) ===',
                 self.carrier_ns, carrier_home_dist)
@@ -1740,6 +1794,7 @@ class SlamFrontierExplorerCtf:
             self._capturer_ns = ns
             self.carrier_ns = ns
             self.pursuer_ns = other
+            self._capture_carrier_pose = pose
             self._log_game_phase(
                 'CAPTURED', 'carrier=%s pursuer=%s' % (ns, self.pursuer_ns))
             self._log_verbose(
