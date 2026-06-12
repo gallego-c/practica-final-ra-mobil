@@ -1,7 +1,7 @@
 # Parámetros del flag_detector para TurtleBot3 real (turtlebot3_bringup).
-# El bringup publica camera/image_raw[/compressed], NO camera/rgb/... (eso es Gazebo).
-camera_topic: "camera/image_raw"
-compressed_camera_topic: "camera/image_raw/compressed"
+# El bringup publica cv_camera/image_raw[/compressed], NO camera/rgb/... (eso es Gazebo).
+camera_topic: "cv_camera/image_raw"
+compressed_camera_topic: "cv_camera/image_raw/compressed"
 scan_topic: "scan"
 
 base_frame: "base_footprint"

@@ -4,9 +4,9 @@
        Runs flag_detector for both robots + camera visualization.
        Assumes turtlebot3_bringup is already running on each robot SBC.
 
-       Real TurtleBot3 camera topics (usb_cam / raspicam in bringup):
-         /robotN/camera/image_raw/compressed
-       NOT the Gazebo path camera/rgb/image_raw/compressed.
+        Real TurtleBot3 camera topics (cv_camera en bringup):
+          /robotN/cv_camera/image_raw/compressed
+        NOT the Gazebo path camera/rgb/image_raw/compressed.
 
        Prerequisites:
          - Bringup with namespace robot1 / robot2 on each SBC
@@ -17,8 +17,8 @@
          rostopic list | grep -E 'image|camera'
 
        Sanity check:
-         rostopic hz /robot1/camera/image_raw/compressed
-         rostopic hz /robot2/camera/image_raw/compressed
+          rostopic hz /robot1/cv_camera/image_raw/compressed
+          rostopic hz /robot2/cv_camera/image_raw/compressed
 
        If camera has no robot namespace (publishes /camera/...), remap per robot:
          roslaunch ctf_navigation real_robot_flag_vision.launch \
@@ -41,16 +41,16 @@
   <arg name="viz" default="rqt"/>
   <!-- debug = flag_detector overlay | camera = live compressed feed from bringup -->
   <arg name="image_source" default="debug"/>
-  <arg name="camera_topic" default="camera/image_raw"/>
-  <arg name="compressed_camera_topic" default="camera/image_raw/compressed"/>
+  <arg name="camera_topic" default="cv_camera/image_raw"/>
+  <arg name="compressed_camera_topic" default="cv_camera/image_raw/compressed"/>
   <!-- Optional remaps when bringup camera is outside the robot namespace -->
   <arg name="robot1_camera_remap" default=""/>
   <arg name="robot2_camera_remap" default=""/>
 
   <arg name="robot1_image_topic"
-       default="$(eval '/' + arg('robot1_ns') + '/flag_detector/debug_image' if arg('image_source') == 'debug' else '/' + arg('robot1_ns') + '/camera/image_raw/compressed')"/>
+       default="$(eval '/' + arg('robot1_ns') + '/flag_detector/debug_image' if arg('image_source') == 'debug' else '/' + arg('robot1_ns') + '/cv_camera/image_raw/compressed')"/>
   <arg name="robot2_image_topic"
-       default="$(eval '/' + arg('robot2_ns') + '/flag_detector/debug_image' if arg('image_source') == 'debug' else '/' + arg('robot2_ns') + '/camera/image_raw/compressed')"/>
+       default="$(eval '/' + arg('robot2_ns') + '/flag_detector/debug_image' if arg('image_source') == 'debug' else '/' + arg('robot2_ns') + '/cv_camera/image_raw/compressed')"/>
 
   <param name="/use_sim_time" value="false"/>
 
