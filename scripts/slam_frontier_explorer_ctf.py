@@ -1295,14 +1295,14 @@ class SlamFrontierExplorerCtf:
         mode = 'approach'
         gx = gy = gyaw = None
 
-        if use_backoff and grid is not None:
+        if use_backoff and not support_only and grid is not None:
             backoff = self._get_backoff_goal(pose, grid, flank_sign)
             if backoff is not None:
                 gx, gy, gyaw = backoff
                 mode = 'backoff'
 
         if gx is None:
-            if stuck_count >= self.flag_approach_detour_after:
+            if stuck_count >= self.flag_approach_detour_after and not support_only:
                 gx, gy, gyaw = self._get_detour_goal(pose, flag_xy, flank_sign)
                 mode = 'detour'
             elif d_flag > self.flag_global_plan_min_dist or support_only:
@@ -1342,30 +1342,42 @@ class SlamFrontierExplorerCtf:
                     else:
                         mode = 'approach'
 
+        # Safely validate and snap all computed goals to free space in the grid map
         if grid is not None:
-            if mode in ('step', 'global-flag') or d_flag > self.flag_approach_max_distance:
-                snapped = self._snap_goal_to_free(grid, gx, gy)
-                if snapped is not None:
-                    snap_shift = math.hypot(snapped[0] - gx, snapped[1] - gy)
-                    if snap_shift <= 1.0:
-                        gx, gy = snapped
-            elif d_flag < 2.5:
-                snapped = self._snap_goal_to_free(grid, gx, gy)
-                if snapped is None:
+            snapped = self._snap_goal_to_free(grid, gx, gy)
+            if snapped is not None:
+                snap_shift = math.hypot(snapped[0] - gx, snapped[1] - gy)
+                # Ensure snap isn't too far (at most 1.0m shift)
+                if snap_shift <= 1.0:
+                    gx, gy = snapped
+                else:
                     self._log_verbose_warn(
-                        '%s: no free cell near flag goal (%.2f, %.2f); detour',
+                        '%s: snap rejected (shift=%.2f m > 1.0m) for mode %s; keeping raw goal',
+                        ns, snap_shift, mode)
+            else:
+                # If snapping fails and we are not already in detour/backoff, try to escape via detour
+                if mode not in ('detour', 'backoff') and not support_only:
+                    self._log_verbose_warn(
+                        '%s: goal (%.2f, %.2f) is inside wall. Attempting detour.',
                         ns, gx, gy)
                     self._pursuit_stuck_count[ns] = stuck_count + 1
                     gx, gy, gyaw = self._get_detour_goal(pose, flag_xy, flank_sign)
                     mode = 'detour'
-                else:
-                    snap_shift = math.hypot(snapped[0] - gx, snapped[1] - gy)
-                    if snap_shift <= 0.75:
-                        gx, gy = snapped
+                    snapped_detour = self._snap_goal_to_free(grid, gx, gy)
+                    if snapped_detour is not None:
+                        gx, gy = snapped_detour
                     else:
                         self._log_verbose_warn(
-                            '%s: snap rejected (shift=%.2f m); keep raw goal',
-                            ns, snap_shift)
+                            '%s: detour goal is also inside wall. Cancelling to prevent wall crash.',
+                            ns)
+                        client.cancel_all_goals()
+                        return
+                else:
+                    self._log_verbose_warn(
+                        '%s: goal (%.2f, %.2f) for mode %s is inside wall and cannot be snapped. '
+                        'Cancelling to prevent wall crash.', ns, gx, gy, mode)
+                    client.cancel_all_goals()
+                    return
 
         tag = 'APPROACH_SHARED' if support_only else 'PURSUE'
         self._log_flag_goal(
