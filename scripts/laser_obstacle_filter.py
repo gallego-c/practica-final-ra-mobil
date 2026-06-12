@@ -28,6 +28,13 @@ class LaserObstacleFilter:
                        self.obstacle_frame, self.robot_radius)
 
     def scan_cb(self, msg):
+        # Asegurar que el frame_id del escaneo incluya el namespace del robot (ej. base_scan -> robot1/base_scan)
+        # Esto corrige el problema si olvidaron pasar set_lidar_frame_id en el bringup del robot.
+        ns = rospy.get_namespace().strip('/')
+        if ns and not msg.header.frame_id.startswith(ns + '/'):
+            clean_frame = msg.header.frame_id.lstrip('/')
+            msg.header.frame_id = f"{ns}/{clean_frame}"
+
         try:
             # Lookup transform from scan frame to the other robot's footprint
             tf = self.tf_buffer.lookup_transform(

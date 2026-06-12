@@ -972,8 +972,7 @@ class SlamFrontierExplorerCtf:
     def _make_goal(self, wx, wy, yaw, ns=None):
         qx, qy, qz, qw = yaw_to_quaternion(yaw)
         goal = MoveBaseGoal()
-        goal.target_pose.header.frame_id = (
-            ns + '/map' if ns else self.map_frame)
+        goal.target_pose.header.frame_id = self.map_frame
         goal.target_pose.header.stamp = rospy.Time.now()
         goal.target_pose.pose.position.x = wx
         goal.target_pose.pose.position.y = wy

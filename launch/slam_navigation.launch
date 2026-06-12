@@ -2,15 +2,22 @@
   <arg name="world_frame" default="map"/>
   <arg name="merged_map_topic" default="/merged_map"/>
 
+  <arg name="robot1_x" default="0.0"/>
+  <arg name="robot1_y" default="0.0"/>
+  <arg name="robot1_yaw" default="0.0"/>
+  <arg name="robot2_x" default="0.0"/>
+  <arg name="robot2_y" default="0.0"/>
+  <arg name="robot2_yaw" default="0.0"/>
+
   <!-- Connect the global world_frame (map) to each robot's map frame. 
        This completes the TF tree: map -> robotN/map -> robotN/odom -> robotN/base_footprint -->
   <node pkg="tf2_ros" type="static_transform_publisher"
         name="robot1_static_map_to_map"
-        args="0 0 0 0 0 0 $(arg world_frame) robot1/map"/>
+        args="$(arg robot1_x) $(arg robot1_y) 0.0 $(arg robot1_yaw) 0.0 0.0 $(arg world_frame) robot1/map"/>
 
   <node pkg="tf2_ros" type="static_transform_publisher"
         name="robot2_static_map_to_map"
-        args="0 0 0 0 0 0 $(arg world_frame) robot2/map"/>
+        args="$(arg robot2_x) $(arg robot2_y) 0.0 $(arg robot2_yaw) 0.0 0.0 $(arg world_frame) robot2/map"/>
 
   <group ns="robot1">
     <node pkg="move_base" type="move_base" name="move_base" output="screen"
