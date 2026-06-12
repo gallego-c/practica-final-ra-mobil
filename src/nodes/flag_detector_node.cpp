@@ -350,8 +350,8 @@ int main(int argc, char** argv)
   {
     ros::spinOnce();
     ROS_WARN_THROTTLE(5.0,
-                      "No camera images yet — check camera_topic and "
-                      "rostopic hz /robot1/camera/rgb/image_raw/compressed");
+                      "No camera images yet — check camera_topic / "
+                      "compressed_camera_topic (rostopic list | grep image)");
     rate.sleep();
   }
   if (!node.hasReceivedImages())
