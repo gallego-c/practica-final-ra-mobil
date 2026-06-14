@@ -14,6 +14,7 @@ import time
 
 import actionlib
 import rospy
+import tf2_geometry_msgs
 import tf2_ros
 from actionlib_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped, Twist
@@ -961,16 +962,51 @@ class SlamFrontierExplorerCtf:
         self._clients[self.pursuer_ns].send_goal(
             self._make_goal(wx, wy, yaw, ns=self.pursuer_ns))
 
-    def _make_goal(self, wx, wy, yaw, ns=None):
+    def _transform_goal_to_robot_map(self, ns, wx, wy, yaw):
+        """Option C: convert map-frame waypoint (from merged map) to robotN/map for move_base."""
+        robot_frame = ns + '/map'
+        if robot_frame == self.map_frame:
+            return wx, wy, yaw
+
+        pose = PoseStamped()
+        pose.header.frame_id = self.map_frame
+        pose.header.stamp = rospy.Time(0)
+        pose.pose.position.x = wx
+        pose.pose.position.y = wy
         qx, qy, qz, qw = yaw_to_quaternion(yaw)
+        pose.pose.orientation.x = qx
+        pose.pose.orientation.y = qy
+        pose.pose.orientation.z = qz
+        pose.pose.orientation.w = qw
+        try:
+            tf = self._tf_buffer.lookup_transform(
+                robot_frame, self.map_frame, rospy.Time(0), rospy.Duration(0.5))
+            out = tf2_geometry_msgs.do_transform_pose(pose, tf)
+            return (
+                out.pose.position.x,
+                out.pose.position.y,
+                quat_to_yaw(out.pose.orientation))
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException,
+                tf2_ros.ExtrapolationException) as exc:
+            rospy.logwarn_throttle(
+                5.0, 'Option C: map->%s goal transform failed: %s', robot_frame, exc)
+            return wx, wy, yaw
+
+    def _make_goal(self, wx, wy, yaw, ns=None):
+        # Option C: frontiers/coordination stay in map + /merged_map; transform
+        # to robotN/map only when sending goals to per-robot move_base costmaps.
+        goal_frame = self.map_frame
+        gx, gy, gyaw = wx, wy, yaw
+        if ns is not None:
+            goal_frame = ns + '/map'
+            gx, gy, gyaw = self._transform_goal_to_robot_map(ns, wx, wy, yaw)
+
+        qx, qy, qz, qw = yaw_to_quaternion(gyaw)
         goal = MoveBaseGoal()
-        # Always use the shared world frame (merged map / RViz fixed frame).
-        # Per-robot robotN/map frames are linked to map via static TF; mixing
-        # frames caused costmap and goal misalignment in RViz.
-        goal.target_pose.header.frame_id = self.map_frame
+        goal.target_pose.header.frame_id = goal_frame
         goal.target_pose.header.stamp = rospy.Time.now()
-        goal.target_pose.pose.position.x = wx
-        goal.target_pose.pose.position.y = wy
+        goal.target_pose.pose.position.x = gx
+        goal.target_pose.pose.position.y = gy
         goal.target_pose.pose.orientation.x = qx
         goal.target_pose.pose.orientation.y = qy
         goal.target_pose.pose.orientation.z = qz

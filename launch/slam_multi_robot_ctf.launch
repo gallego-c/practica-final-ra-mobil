@@ -161,7 +161,8 @@
     <rosparam param="robot2_home" subst_value="True">[$(arg robot2_x), $(arg robot2_y), $(arg robot2_yaw)]</rosparam>
   </node>
 
-  <!-- 7. RViz: merged SLAM map, per-robot costmaps, and navigation plans -->
+  <!-- 7. RViz: fixed frame map shows /merged_map; per-robot costmaps use robotN/map
+       (Option C hybrid — goals are transformed in slam_frontier_explorer_ctf.py). -->
   <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz"
         args="-d $(find ctf_navigation)/rviz/slam_multi_robot_ctf.rviz"/>
 </launch>

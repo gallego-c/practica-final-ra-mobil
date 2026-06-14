@@ -30,8 +30,9 @@
                 command="load" ns="local_costmap"/>
       <param name="global_costmap/robot_base_frame" value="robot1/base_footprint"/>
       <param name="local_costmap/robot_base_frame" value="robot1/base_footprint"/>
-      <param name="global_costmap/global_frame" value="$(arg world_frame)"/>
-      <param name="global_costmap/static_layer/map_topic" value="$(arg merged_map_topic)"/>
+      <!-- Option C (hybrid): explorer uses merged map; move_base costmap uses per-robot SLAM. -->
+      <param name="global_costmap/global_frame" value="robot1/map"/>
+      <param name="global_costmap/static_layer/map_topic" value="/robot1/map"/>
       <param name="local_costmap/global_frame" value="robot1/odom"/>
       <param name="local_costmap/obstacle_layer/scan/topic" value="/robot1/scan_filtered"/>
       <param name="local_costmap/obstacle_layer/other_robot/topic" value="/robot1/other_robot_cloud"/>
@@ -67,8 +68,9 @@
                 command="load" ns="local_costmap"/>
       <param name="global_costmap/robot_base_frame" value="robot2/base_footprint"/>
       <param name="local_costmap/robot_base_frame" value="robot2/base_footprint"/>
-      <param name="global_costmap/global_frame" value="$(arg world_frame)"/>
-      <param name="global_costmap/static_layer/map_topic" value="$(arg merged_map_topic)"/>
+      <!-- Option C (hybrid): per-robot SLAM map for move_base global costmap. -->
+      <param name="global_costmap/global_frame" value="robot2/map"/>
+      <param name="global_costmap/static_layer/map_topic" value="/robot2/map"/>
       <param name="local_costmap/global_frame" value="robot2/odom"/>
       <param name="local_costmap/obstacle_layer/scan/topic" value="/robot2/scan_filtered"/>
       <param name="local_costmap/obstacle_layer/other_robot/topic" value="/robot2/other_robot_cloud"/>
