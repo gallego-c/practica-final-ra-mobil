@@ -18,7 +18,8 @@
   <arg name="flag_x" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world', 'nine_rooms_world'] else -3.2)"/>
   <arg name="flag_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world', 'nine_rooms_world'] else 3.2)"/>
 
-  <!-- Initial alignment map offset for multirobot_map_merge -->
+  <!-- Initial alignment for multirobot_map_merge. With identity map->robotN/map
+       static TF, gmapping maps already use world coordinates; keep init at 0. -->
   <arg name="robot1_map_init_x" default="0.0"/>
   <arg name="robot1_map_init_y" default="0.0"/>
   <arg name="robot1_map_init_yaw" default="0.0"/>

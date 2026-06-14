@@ -11,10 +11,8 @@
   <arg name="robot2_init_y" default="0.0"/>
   <arg name="robot2_init_yaw" default="0.0"/>
 
-  <!-- Initial map poses for multirobot_map_merge. In this Gazebo setup the
-       TurtleBot3 odometry already carries the spawn offset, so the per-robot
-       gmapping maps are already in a common coordinate convention. Keep these
-       at zero unless you confirm the individual maps are local to each robot. -->
+  <!-- Initial map poses for multirobot_map_merge. With identity map->robotN/map
+       static TF, gmapping maps already use world coordinates; keep init at 0. -->
   <param name="/robot1/map_merge/init_pose_x" value="$(arg robot1_init_x)"/>
   <param name="/robot1/map_merge/init_pose_y" value="$(arg robot1_init_y)"/>
   <param name="/robot1/map_merge/init_pose_z" value="0.0"/>
