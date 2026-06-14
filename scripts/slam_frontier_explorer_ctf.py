@@ -1016,7 +1016,7 @@ class SlamFrontierExplorerCtf:
         qx, qy, qz, qw = yaw_to_quaternion(gyaw)
         goal = MoveBaseGoal()
         goal.target_pose.header.frame_id = goal_frame
-        goal.target_pose.header.stamp = rospy.Time.now()
+        goal.target_pose.header.stamp = rospy.Time(0)
         goal.target_pose.pose.position.x = gx
         goal.target_pose.pose.position.y = gy
         goal.target_pose.pose.orientation.x = qx

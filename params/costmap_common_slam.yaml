@@ -1,6 +1,5 @@
 # SLAM exploration: keep the same safety envelope as the visio navigation flow.
 footprint: [[-0.205, -0.155], [-0.205, 0.155], [0.077, 0.155], [0.077, -0.155]]
-map_type: costmap
 
 obstacle_layer:
   enabled:         true
@@ -23,7 +22,9 @@ obstacle_layer:
     topic:                  other_robot_cloud
     sensor_frame:           map
     marking:                true
-    clearing:               true
+    # Point cloud is in map frame; local costmap is in odom. Raytrace clearing uses
+    # the sensor-frame origin (map 0,0), which lies outside the rolling local window.
+    clearing:               false
     min_obstacle_height:    0.0
     max_obstacle_height:    0.5
     observation_persistence: 0.0

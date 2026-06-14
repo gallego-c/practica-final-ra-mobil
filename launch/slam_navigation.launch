@@ -36,6 +36,8 @@
       <param name="global_costmap/static_layer/map_topic" value="/robot1/map"/>
       <param name="local_costmap/global_frame" value="robot1/odom"/>
       <param name="local_costmap/obstacle_layer/scan/topic" value="/robot1/scan_filtered"/>
+      <param name="global_costmap/transform_tolerance" value="2.0"/>
+      <param name="local_costmap/transform_tolerance" value="2.0"/>
       <param name="local_costmap/obstacle_layer/other_robot/topic" value="/robot1/other_robot_cloud"/>
       <param name="local_costmap/obstacle_layer/other_robot/sensor_frame" value="$(arg world_frame)"/>
       <param name="local_costmap/obstacle_layer/scan/observation_persistence" value="0.0"/>
@@ -74,6 +76,8 @@
       <param name="global_costmap/static_layer/map_topic" value="/robot2/map"/>
       <param name="local_costmap/global_frame" value="robot2/odom"/>
       <param name="local_costmap/obstacle_layer/scan/topic" value="/robot2/scan_filtered"/>
+      <param name="global_costmap/transform_tolerance" value="2.0"/>
+      <param name="local_costmap/transform_tolerance" value="2.0"/>
       <param name="local_costmap/obstacle_layer/other_robot/topic" value="/robot2/other_robot_cloud"/>
       <param name="local_costmap/obstacle_layer/other_robot/sensor_frame" value="$(arg world_frame)"/>
       <param name="local_costmap/obstacle_layer/scan/observation_persistence" value="0.0"/>

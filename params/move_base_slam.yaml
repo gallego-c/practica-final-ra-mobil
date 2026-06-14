@@ -1,6 +1,5 @@
-# Tolerate small TF lag between gmapping map->odom and sim time (avoids
-# "extrapolation into the future" when transforming global plan to odom).
-transform_tolerance:   1.0
+# Tolerate TF lag between gmapping map->odom and sim time.
+transform_tolerance:   2.0
 
 controller_frequency:  12.0
 controller_patience:   8.0
