@@ -14,6 +14,7 @@ import time
 
 import actionlib
 import rospy
+import tf2_geometry_msgs
 import tf2_ros
 from actionlib_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped, Twist
@@ -644,16 +645,56 @@ class SlamFrontierExplorerCtf:
             return 10 ** 9
         return sum(1 for v in grid.data if v < 0)
 
-    def _get_robot_pose(self, base_frame):
+    def _robot_nav_frame(self, ns):
+        return ns + '/map'
+
+    def _get_robot_pose(self, base_frame, target_frame=None):
+        frame = target_frame if target_frame else self.map_frame
         try:
             tf = self._tf_buffer.lookup_transform(
-                self.map_frame, base_frame, rospy.Time(0), rospy.Duration(0.3))
+                frame, base_frame, rospy.Time(0), rospy.Duration(0.3))
             yaw = quat_to_yaw(tf.transform.rotation)
             return (tf.transform.translation.x,
                     tf.transform.translation.y, yaw)
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException,
                 tf2_ros.ExtrapolationException):
             return None
+
+    def _get_robot_nav_pose(self, ns, base_frame=None):
+        """Option A: pose in robotN/map for move_base-aligned navigation checks."""
+        if base_frame is None:
+            base_frame = ns + '/base_footprint'
+        return self._get_robot_pose(base_frame, target_frame=self._robot_nav_frame(ns))
+
+    def _transform_map_point_to_robot(self, ns, wx, wy, yaw):
+        """Option A: merged-map (map frame) waypoint -> robotN/map for move_base goals."""
+        robot_frame = self._robot_nav_frame(ns)
+        if robot_frame == self.map_frame:
+            return wx, wy, yaw
+
+        pose = PoseStamped()
+        pose.header.frame_id = self.map_frame
+        pose.header.stamp = rospy.Time(0)
+        pose.pose.position.x = wx
+        pose.pose.position.y = wy
+        qx, qy, qz, qw = yaw_to_quaternion(yaw)
+        pose.pose.orientation.x = qx
+        pose.pose.orientation.y = qy
+        pose.pose.orientation.z = qz
+        pose.pose.orientation.w = qw
+        try:
+            tf = self._tf_buffer.lookup_transform(
+                robot_frame, self.map_frame, rospy.Time(0), rospy.Duration(0.5))
+            out = tf2_geometry_msgs.do_transform_pose(pose, tf)
+            return (
+                out.pose.position.x,
+                out.pose.position.y,
+                quat_to_yaw(out.pose.orientation))
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException,
+                tf2_ros.ExtrapolationException) as exc:
+            rospy.logwarn_throttle(
+                5.0, 'Option A: map->%s transform failed: %s', robot_frame, exc)
+            return wx, wy, yaw
 
     def _all_robot_poses(self):
         poses = {}
@@ -907,7 +948,9 @@ class SlamFrontierExplorerCtf:
         return best
 
     def _get_nav_grid(self, ns):
-        return self._get_map()
+        # Option A: validate chase goals against the same SLAM map move_base uses.
+        robot_grid = self._get_robot_map(ns)
+        return robot_grid if robot_grid is not None else self._get_map()
 
     def _resolve_chase_goal(self, ns, robot_pose, target_xy, allow_partial=True):
         """Map-validated chase goal: known-free cell, stepping through mapped space."""
@@ -962,15 +1005,20 @@ class SlamFrontierExplorerCtf:
             self._make_goal(wx, wy, yaw, ns=self.pursuer_ns))
 
     def _make_goal(self, wx, wy, yaw, ns=None):
-        qx, qy, qz, qw = yaw_to_quaternion(yaw)
+        # Option A: frontiers/coordination stay in merged map (map frame); transform
+        # goals into robotN/map before sending to that robot's move_base.
+        goal_frame = self.map_frame
+        gx, gy, gyaw = wx, wy, yaw
+        if ns is not None:
+            goal_frame = self._robot_nav_frame(ns)
+            gx, gy, gyaw = self._transform_map_point_to_robot(ns, wx, wy, yaw)
+
+        qx, qy, qz, qw = yaw_to_quaternion(gyaw)
         goal = MoveBaseGoal()
-        # Always use the shared world frame (merged map / RViz fixed frame).
-        # Per-robot robotN/map frames are linked to map via static TF; mixing
-        # frames caused costmap and goal misalignment in RViz.
-        goal.target_pose.header.frame_id = self.map_frame
+        goal.target_pose.header.frame_id = goal_frame
         goal.target_pose.header.stamp = rospy.Time.now()
-        goal.target_pose.pose.position.x = wx
-        goal.target_pose.pose.position.y = wy
+        goal.target_pose.pose.position.x = gx
+        goal.target_pose.pose.position.y = gy
         goal.target_pose.pose.orientation.x = qx
         goal.target_pose.pose.orientation.y = qy
         goal.target_pose.pose.orientation.z = qz
