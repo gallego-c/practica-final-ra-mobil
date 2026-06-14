@@ -7,7 +7,6 @@ rolling_window: false
 transform_tolerance: 1.0
 plugins:
   - {name: static_layer, type: "costmap_2d::StaticLayer"}
-  - {name: obstacle_layer, type: "costmap_2d::ObstacleLayer"}
   - {name: inflation_layer, type: "costmap_2d::InflationLayer"}
 
 static_layer:
@@ -17,10 +16,9 @@ static_layer:
   unknown_cost_value: 255
   trinary_costmap: true
 
-# The obstacle_layer config (scan + other_robot sources) is loaded from
-# costmap_common_slam.yaml. Adding the obstacle_layer here lets the global
-# planner see dynamic obstacles (the flag, the other robot, moved furniture)
-# that are not yet in the static SLAM map.
+# No obstacle_layer on the global costmap: transient LiDAR marks (e.g. a teammate
+# at a doorway) persist as phantom blocks when clearing rays no longer reach them.
+# Dynamic avoidance stays on the local costmap (scan + other_robot_cloud + DWA).
 
 # Wider inflation + steep cost falloff → global plans prefer corridor centers
 # over hugging walls. Local costmap stays tighter for execution.
