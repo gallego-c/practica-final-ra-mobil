@@ -1,7 +1,9 @@
 # GMapping tuned for TurtleBot3 Waffle Pi (Robot 1) — Real robot
 # Parameters adjusted for open spaces with few features.
-transform_publish_period: 0.05
-map_update_interval: 2.0
+# Publish map->odom often: real robots use live wheel odom (~50 Hz) while scans
+# are transformed with this TF. Slow updates make RViz maps and lasers diverge.
+transform_publish_period: 0.02
+map_update_interval: 1.0
 maxUrange: 3.5
 maxRange: 3.5
 sigma: 0.05
@@ -19,9 +21,9 @@ llsamplerange: 0.01
 llsamplestep: 0.01
 lasamplerange: 0.005
 lasamplestep: 0.005
-linearUpdate: 0.2
-angularUpdate: 0.2
-temporalUpdate: 3.0
+linearUpdate: 0.15
+angularUpdate: 0.15
+temporalUpdate: 1.0
 particles: 30
 xmin: -10.0
 ymin: -10.0

@@ -5,15 +5,29 @@
   <arg name="merged_map_topic" default="/merged_map"/>
   <arg name="rviz" default="true"/>
 
-  <!-- Robots reales a 3.00 m de separación (1.50 m a cada lado del centro) -->
+  <!-- Robots reales: 3.00 m entre ellos, bandera en el centro del mapa -->
   <arg name="robot1_x" default="-1.50"/>
   <arg name="robot1_y" default="0.0"/>
   <arg name="robot1_yaw" default="0.0"/>
   <arg name="robot2_x" default="1.50"/>
   <arg name="robot2_y" default="0.0"/>
   <arg name="robot2_yaw" default="3.1416"/>
+  <arg name="flag_x" default="0.0"/>
+  <arg name="flag_y" default="0.0"/>
+
+  <!-- Posición conocida de la bandera (centro) — valida capturas en slam_frontier_explorer_ctf -->
+  <rosparam param="/ctf_navigation/spawns/flag" subst_value="True">[$(arg flag_x), $(arg flag_y)]</rosparam>
 
   <arg name="quiet_slam" default="true"/>
+
+  <!--
+    Multi-PC real robots: sync clocks on ALL machines (chrony/ntp) before launch.
+    TF checks (run on the roslaunch PC while stack is up):
+      rosrun tf tf_echo map robot1/base_footprint
+      rosrun tf tf_echo map robot2/base_footprint
+      rosrun tf view_frames
+    Spawn args robot1_x/robot2_x MUST match physical robot positions in the arena.
+  -->
 
   <!-- FIX: Publicar TF estático del LiDAR porque el bringup no levanta robot_state_publisher correctamente con los namespaces -->
   <!-- NOTA: El LiDAR físico del TurtleBot3 Waffle Pi está rotado 180 grados (3.141592 rad) respecto a la base -->
