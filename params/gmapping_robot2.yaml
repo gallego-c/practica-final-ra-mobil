@@ -19,10 +19,10 @@ llsamplerange: 0.01
 llsamplestep: 0.01
 lasamplerange: 0.005
 lasamplestep: 0.005
-linearUpdate: 0.15
-angularUpdate: 0.15
-temporalUpdate: 1.0
-particles: 30
+linearUpdate: 0.08
+angularUpdate: 0.08
+temporalUpdate: 0.5
+particles: 50
 xmin: -10.0
 ymin: -10.0
 xmax: 10.0

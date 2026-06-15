@@ -42,7 +42,7 @@
       <param name="local_costmap/global_frame" value="robot1/odom"/>
       <param name="local_costmap/obstacle_layer/scan/topic" value="/robot1/scan_filtered"/>
       <param name="local_costmap/obstacle_layer/other_robot/topic" value="/robot1/other_robot_cloud"/>
-      <param name="local_costmap/obstacle_layer/other_robot/sensor_frame" value="$(arg world_frame)"/>
+      <param name="local_costmap/obstacle_layer/other_robot/sensor_frame" value="robot1/odom"/>
       <param name="global_costmap/obstacle_layer/scan/topic" value="/robot1/scan_filtered"/>
       <param name="global_costmap/obstacle_layer/other_robot/topic" value="/robot1/other_robot_cloud"/>
       <param name="global_costmap/obstacle_layer/other_robot/sensor_frame" value="$(arg world_frame)"/>
@@ -80,7 +80,7 @@
       <param name="local_costmap/global_frame" value="robot2/odom"/>
       <param name="local_costmap/obstacle_layer/scan/topic" value="/robot2/scan_filtered"/>
       <param name="local_costmap/obstacle_layer/other_robot/topic" value="/robot2/other_robot_cloud"/>
-      <param name="local_costmap/obstacle_layer/other_robot/sensor_frame" value="$(arg world_frame)"/>
+      <param name="local_costmap/obstacle_layer/other_robot/sensor_frame" value="robot2/odom"/>
       <param name="global_costmap/obstacle_layer/scan/topic" value="/robot2/scan_filtered"/>
       <param name="global_costmap/obstacle_layer/other_robot/topic" value="/robot2/other_robot_cloud"/>
       <param name="global_costmap/obstacle_layer/other_robot/sensor_frame" value="$(arg world_frame)"/>

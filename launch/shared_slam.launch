@@ -11,12 +11,21 @@
   <arg name="robot2_init_y" default="0.0"/>
   <arg name="robot2_init_yaw" default="0.0"/>
   <arg name="quiet_slam" default="true"/>
+  <arg name="robot1_spawn_x" default="-1.50"/>
+  <arg name="robot1_spawn_y" default="0.0"/>
+  <arg name="robot1_spawn_yaw" default="0.0"/>
+  <arg name="robot2_spawn_x" default="1.50"/>
+  <arg name="robot2_spawn_y" default="0.0"/>
+  <arg name="robot2_spawn_yaw" default="3.1416"/>
 
   <!-- Laser scan filters to remove the other robot's body from GMapping and move_base -->
   <group ns="robot1">
     <node pkg="ctf_navigation" type="laser_obstacle_filter.py" name="laser_obstacle_filter" output="screen">
       <param name="obstacle_frame" value="robot2/base_footprint"/>
       <param name="robot_radius" value="0.32"/>
+      <param name="use_odom_relative" value="true"/>
+      <rosparam param="robot1_spawn" subst_value="True">[$(arg robot1_spawn_x), $(arg robot1_spawn_y), $(arg robot1_spawn_yaw)]</rosparam>
+      <rosparam param="robot2_spawn" subst_value="True">[$(arg robot2_spawn_x), $(arg robot2_spawn_y), $(arg robot2_spawn_yaw)]</rosparam>
       <remap from="scan" to="/robot1/scan"/>
       <remap from="scan_filtered" to="/robot1/scan_filtered"/>
     </node>
@@ -26,6 +35,9 @@
     <node pkg="ctf_navigation" type="laser_obstacle_filter.py" name="laser_obstacle_filter" output="screen">
       <param name="obstacle_frame" value="robot1/base_footprint"/>
       <param name="robot_radius" value="0.32"/>
+      <param name="use_odom_relative" value="true"/>
+      <rosparam param="robot1_spawn" subst_value="True">[$(arg robot1_spawn_x), $(arg robot1_spawn_y), $(arg robot1_spawn_yaw)]</rosparam>
+      <rosparam param="robot2_spawn" subst_value="True">[$(arg robot2_spawn_x), $(arg robot2_spawn_y), $(arg robot2_spawn_yaw)]</rosparam>
       <remap from="scan" to="/robot2/scan"/>
       <remap from="scan_filtered" to="/robot2/scan_filtered"/>
     </node>
