@@ -16,10 +16,11 @@
   <arg name="quiet_slam" default="true"/>
 
   <!-- FIX: Publicar TF estático del LiDAR porque el bringup no levanta robot_state_publisher correctamente con los namespaces -->
+  <!-- NOTA: El LiDAR físico del TurtleBot3 Waffle Pi está rotado 180 grados (3.141592 rad) respecto a la base -->
   <node pkg="tf2_ros" type="static_transform_publisher" name="robot1_base_to_scan"
-        args="-0.064 0.0 0.132 0.0 0.0 0.0 robot1/base_footprint robot1/base_scan" />
+        args="-0.064 0.0 0.132 3.141592 0.0 0.0 robot1/base_footprint robot1/base_scan" />
   <node pkg="tf2_ros" type="static_transform_publisher" name="robot2_base_to_scan"
-        args="-0.064 0.0 0.132 0.0 0.0 0.0 robot2/base_footprint robot2/base_scan" />
+        args="-0.064 0.0 0.132 3.141592 0.0 0.0 robot2/base_footprint robot2/base_scan" />
 
   <!-- 1. Shared SLAM (GMapping for both robots & map_merge) -->
   <include file="$(find ctf_navigation)/launch/shared_slam.launch">
