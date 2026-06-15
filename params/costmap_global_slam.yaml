@@ -3,7 +3,7 @@ robot_base_frame: base_footprint
 update_frequency: 8.0
 publish_frequency: 4.0
 rolling_window: false
-transform_tolerance: 2.0
+transform_tolerance: 1.0 #2.0
 plugins:
   - {name: static_layer, type: "costmap_2d::StaticLayer"}
   - {name: inflation_layer, type: "costmap_2d::InflationLayer"}
