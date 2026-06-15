@@ -93,6 +93,7 @@ install(DIRECTORY launch params rviz worlds models maps
 
 # SLAM / CTF Python nodes
 catkin_install_python(PROGRAMS
+  scripts/clock_drift_check.py
   scripts/laser_obstacle_filter.py
   scripts/robot_coordinator.py
   scripts/robot_obstacle_publisher.py

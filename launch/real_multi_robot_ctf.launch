@@ -21,13 +21,16 @@
   <arg name="quiet_slam" default="true"/>
 
   <!--
-    Multi-PC real robots: sync clocks on ALL machines (chrony/ntp) before launch.
-    TF checks (run on the roslaunch PC while stack is up):
-      rosrun tf tf_echo map robot1/base_footprint
-      rosrun tf tf_echo map robot2/base_footprint
-      rosrun tf view_frames
-    Spawn args robot1_x/robot2_x MUST match physical robot positions in the arena.
+    Multi-PC real robots:
+    1. Sync clocks: sudo timedatectl set-ntp true  (on ALL 3 PCs)
+    2. STOP every ROS node on every PC (roscore included)
+    3. Verify: date  and  rostopic echo /robot1/odom/header/stamp  differ < 2 s
+    4. Start roscore, then robot bringups, then this launch
+
+    A ~7200 s extrapolation error almost always means NTP stepped the clock while
+    ROS was still running — full restart is required, not just chrony.
   -->
+  <node pkg="ctf_navigation" type="clock_drift_check.py" name="clock_drift_check" output="screen"/>
 
   <!-- FIX: Publicar TF estático del LiDAR porque el bringup no levanta robot_state_publisher correctamente con los namespaces -->
   <!-- NOTA: El LiDAR físico del TurtleBot3 Waffle Pi está rotado 180 grados (3.141592 rad) respecto a la base -->
