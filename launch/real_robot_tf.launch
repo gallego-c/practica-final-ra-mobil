@@ -1,0 +1,34 @@
+<launch>
+  <!--
+    Kinematic chain for real TurtleBot3 with ROS namespaces.
+
+    Each robot SBC publishes robotN/odom -> robotN/base_footprint (wheel odom).
+    This launch completes base_footprint -> base_link -> base_scan for GMapping.
+
+    Do NOT also publish base_footprint -> base_scan (shortcut): it conflicts with
+    base_link and makes scans appear rotated ~90 deg in RViz.
+
+    If robot bringup already runs robot_state_publisher with the same links,
+    set publish_kinematic_tf:=false on this include.
+  -->
+  <arg name="robot1_ns" default="robot1"/>
+  <arg name="robot2_ns" default="robot2"/>
+  <arg name="lidar_yaw" default="3.14159265359"/>
+  <arg name="publish_kinematic_tf" default="true"/>
+
+  <group if="$(arg publish_kinematic_tf)">
+    <node pkg="tf2_ros" type="static_transform_publisher"
+          name="robot1_footprint_to_link"
+          args="0 0 0.01 0 0 0 $(arg robot1_ns)/base_footprint $(arg robot1_ns)/base_link"/>
+    <node pkg="tf2_ros" type="static_transform_publisher"
+          name="robot1_link_to_scan"
+          args="-0.064 0 0.122 $(arg lidar_yaw) 0 0 $(arg robot1_ns)/base_link $(arg robot1_ns)/base_scan"/>
+
+    <node pkg="tf2_ros" type="static_transform_publisher"
+          name="robot2_footprint_to_link"
+          args="0 0 0.01 0 0 0 $(arg robot2_ns)/base_footprint $(arg robot2_ns)/base_link"/>
+    <node pkg="tf2_ros" type="static_transform_publisher"
+          name="robot2_link_to_scan"
+          args="-0.064 0 0.122 $(arg lidar_yaw) 0 0 $(arg robot2_ns)/base_link $(arg robot2_ns)/base_scan"/>
+  </group>
+</launch>

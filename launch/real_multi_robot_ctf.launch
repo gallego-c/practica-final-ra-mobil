@@ -15,7 +15,14 @@
   <arg name="flag_x" default="0.0"/>
   <arg name="flag_y" default="0.0"/>
 
-  <!-- Posición conocida de la bandera (centro) — valida capturas en slam_frontier_explorer_ctf -->
+  <!-- LiDAR LD08 físico montado 180° respecto al URDF stock (probar 0.0 si el mapa sale girado) -->
+  <arg name="lidar_yaw" default="3.14159265359"/>
+  <!-- false si el bringup del robot ya publica base_footprint->base_link->base_scan -->
+  <arg name="publish_kinematic_tf" default="true"/>
+
+  <!-- Spawns en map (deben coincidir con map_merge init_pose y slam_navigation static TF) -->
+  <rosparam param="/ctf_navigation/spawns/robot1" subst_value="True">[$(arg robot1_x), $(arg robot1_y), $(arg robot1_yaw)]</rosparam>
+  <rosparam param="/ctf_navigation/spawns/robot2" subst_value="True">[$(arg robot2_x), $(arg robot2_y), $(arg robot2_yaw)]</rosparam>
   <rosparam param="/ctf_navigation/spawns/flag" subst_value="True">[$(arg flag_x), $(arg flag_y)]</rosparam>
 
   <arg name="quiet_slam" default="true"/>
@@ -32,12 +39,11 @@
   -->
   <node pkg="ctf_navigation" type="clock_drift_check.py" name="clock_drift_check" output="screen"/>
 
-  <!-- FIX: Publicar TF estático del LiDAR porque el bringup no levanta robot_state_publisher correctamente con los namespaces -->
-  <!-- NOTA: El LiDAR físico del TurtleBot3 Waffle Pi está rotado 180 grados (3.141592 rad) respecto a la base -->
-  <node pkg="tf2_ros" type="static_transform_publisher" name="robot1_base_to_scan"
-        args="-0.064 0.0 0.132 3.141592 0.0 0.0 robot1/base_footprint robot1/base_scan" />
-  <node pkg="tf2_ros" type="static_transform_publisher" name="robot2_base_to_scan"
-        args="-0.064 0.0 0.132 3.141592 0.0 0.0 robot2/base_footprint robot2/base_scan" />
+  <!-- base_footprint -> base_link -> base_scan (evita atajo directo a base_scan que desalinea láser y mapas) -->
+  <include file="$(find ctf_navigation)/launch/real_robot_tf.launch">
+    <arg name="lidar_yaw" value="$(arg lidar_yaw)"/>
+    <arg name="publish_kinematic_tf" value="$(arg publish_kinematic_tf)"/>
+  </include>
 
   <!-- 1. Shared SLAM (GMapping for both robots & map_merge) -->
   <include file="$(find ctf_navigation)/launch/shared_slam.launch">
@@ -50,6 +56,7 @@
     <arg name="robot2_spawn_x" value="$(arg robot2_x)"/>
     <arg name="robot2_spawn_y" value="$(arg robot2_y)"/>
     <arg name="robot2_spawn_yaw" value="$(arg robot2_yaw)"/>
+    <arg name="lidar_yaw" value="$(arg lidar_yaw)"/>
     <arg name="robot1_init_x" value="$(arg robot1_x)"/>
     <arg name="robot1_init_y" value="$(arg robot1_y)"/>
     <arg name="robot1_init_yaw" value="$(arg robot1_yaw)"/>

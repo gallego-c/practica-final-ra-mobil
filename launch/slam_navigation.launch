@@ -9,8 +9,9 @@
   <arg name="robot2_y" default="0.0"/>
   <arg name="robot2_yaw" default="0.0"/>
 
-  <!-- Connect the global world_frame (map) to each robot's map frame. 
-       This completes the TF tree: map -> robotN/map -> robotN/odom -> robotN/base_footprint -->
+  <!-- Connect world_frame (map) to each robot SLAM map frame.
+       Values MUST match map_merge init_pose_* (see map_merge.launch).
+       TF chain: map -> robotN/map -> robotN/odom -> robotN/base_footprint -->
   <node pkg="tf2_ros" type="static_transform_publisher"
         name="robot1_static_map_to_map"
         args="$(arg robot1_x) $(arg robot1_y) 0.0 $(arg robot1_yaw) 0.0 0.0 $(arg world_frame) robot1/map"/>

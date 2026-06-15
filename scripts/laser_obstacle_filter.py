@@ -13,10 +13,9 @@ import tf2_ros
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 
-# TurtleBot3 Waffle Pi: base_footprint -> base_scan (matches real_multi_robot_ctf.launch)
+# TurtleBot3 Waffle Pi: base_link -> base_scan (matches real_robot_tf.launch)
 LIDAR_X = -0.064
 LIDAR_Y = 0.0
-LIDAR_YAW = math.pi
 
 
 def _yaw_from_quat(q):
@@ -38,7 +37,7 @@ def _spawn_odom_to_map(spawn, odom_msg):
     return mx, my, myaw
 
 
-def _other_in_scan_frame(self_spawn, self_odom, other_spawn, other_odom):
+def _other_in_scan_frame(self_spawn, self_odom, other_spawn, other_odom, lidar_yaw):
     """Other robot center in this robot's base_scan frame."""
     mx1, my1, yaw1 = _spawn_odom_to_map(self_spawn, self_odom)
     mx2, my2, _ = _spawn_odom_to_map(other_spawn, other_odom)
@@ -48,9 +47,9 @@ def _other_in_scan_frame(self_spawn, self_odom, other_spawn, other_odom):
     sin_y = math.sin(-yaw1)
     ox = cos_y * dx - sin_y * dy
     oy = sin_y * dx + cos_y * dy
-    # base_footprint -> base_scan
-    cos_l = math.cos(LIDAR_YAW)
-    sin_l = math.sin(LIDAR_YAW)
+    # base_footprint -> base_link (z only) -> base_scan
+    cos_l = math.cos(lidar_yaw)
+    sin_l = math.sin(lidar_yaw)
     sx = cos_l * (ox - LIDAR_X) - sin_l * (oy - LIDAR_Y)
     sy = sin_l * (ox - LIDAR_X) + cos_l * (oy - LIDAR_Y)
     return sx, sy
@@ -62,6 +61,7 @@ class LaserObstacleFilter:
         self.obstacle_frame = rospy.get_param('~obstacle_frame', '')
         self.robot_radius = float(rospy.get_param('~robot_radius', 0.32))
         self.use_odom_relative = bool(rospy.get_param('~use_odom_relative', True))
+        self.lidar_yaw = float(rospy.get_param('~lidar_yaw', math.pi))
 
         ns = rospy.get_namespace().strip('/')
         self.self_ns = ns or 'robot1'
@@ -102,7 +102,8 @@ class LaserObstacleFilter:
             if self_odom and other_odom:
                 return _other_in_scan_frame(
                     self.spawn[self.self_ns], self_odom,
-                    self.spawn[self.other_ns], other_odom)
+                    self.spawn[self.other_ns], other_odom,
+                    self.lidar_yaw)
         try:
             tf = self.tf_buffer.lookup_transform(
                 self.self_ns + '/base_scan',

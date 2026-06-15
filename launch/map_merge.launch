@@ -11,10 +11,10 @@
   <arg name="robot2_init_y" default="0.0"/>
   <arg name="robot2_init_yaw" default="0.0"/>
 
-  <!-- Initial map poses for multirobot_map_merge (world frame = map).
-       REAL ROBOTS: must match slam_navigation static TF and physical spawn
-       (real_multi_robot_ctf.launch: robot1 at -1.5,0, robot2 at +1.5,0, yaw pi).
-       SIM Gazebo: often keep 0,0 because spawn offset is already in odom. -->
+  <!-- Initial poses for multirobot_map_merge (world frame = map).
+       MUST match slam_navigation static TF (map -> robotN/map) exactly.
+       REAL: robot1 (-1.5,0,0), robot2 (+1.5,0,pi) — same args as physical spawn.
+       GAZEBO: keep 0,0,0 for both; spawn offset lives in wheel odom, not here. -->
   <param name="/robot1/map_merge/init_pose_x" value="$(arg robot1_init_x)"/>
   <param name="/robot1/map_merge/init_pose_y" value="$(arg robot1_init_y)"/>
   <param name="/robot1/map_merge/init_pose_z" value="0.0"/>
