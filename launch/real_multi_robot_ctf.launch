@@ -5,11 +5,11 @@
   <arg name="merged_map_topic" default="/merged_map"/>
   <arg name="rviz" default="true"/>
 
-  <!-- Robots reales a 3.80 m de separación (1.90 m a cada lado del centro) -->
-  <arg name="robot1_x" default="-1.90"/>
+  <!-- Robots reales a 3.00 m de separación (1.50 m a cada lado del centro) -->
+  <arg name="robot1_x" default="-1.50"/>
   <arg name="robot1_y" default="0.0"/>
   <arg name="robot1_yaw" default="0.0"/>
-  <arg name="robot2_x" default="1.90"/>
+  <arg name="robot2_x" default="1.50"/>
   <arg name="robot2_y" default="0.0"/>
   <arg name="robot2_yaw" default="3.1416"/>
 
