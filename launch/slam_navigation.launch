@@ -8,6 +8,8 @@
   <arg name="robot2_x" default="0.0"/>
   <arg name="robot2_y" default="0.0"/>
   <arg name="robot2_yaw" default="0.0"/>
+  <arg name="move_base_delay_robot1" default="8"/>
+  <arg name="move_base_delay_robot2" default="12"/>
 
   <!-- Connect world_frame (map) to each robot SLAM map frame.
        Values MUST match map_merge init_pose_* (see map_merge.launch).
@@ -20,9 +22,19 @@
         name="robot2_static_map_to_map"
         args="$(arg robot2_x) $(arg robot2_y) 0.0 $(arg robot2_yaw) 0.0 0.0 $(arg world_frame) robot2/map"/>
 
+  <!-- Bootstrap: gmapping publishes robotN/map->robotN/odom only after the first scan.
+       Without this link, map and wheel odom are separate TF trees and move_base fails. -->
+  <node pkg="tf2_ros" type="static_transform_publisher"
+        name="robot1_bootstrap_map_to_odom"
+        args="0 0 0 0 0 0 robot1/map robot1/odom"/>
+  <node pkg="tf2_ros" type="static_transform_publisher"
+        name="robot2_bootstrap_map_to_odom"
+        args="0 0 0 0 0 0 robot2/map robot2/odom"/>
+
   <group ns="robot1">
     <node pkg="move_base" type="move_base" name="move_base" output="screen"
-          respawn="true" respawn_delay="3">
+          respawn="true" respawn_delay="3"
+          launch-prefix="bash -c 'sleep $(arg move_base_delay_robot1); $0 $@' ">
       <remap from="odom" to="/robot1/odom"/>
       <remap from="scan" to="/robot1/scan_filtered"/>
       <remap from="cmd_vel" to="/robot1/cmd_vel_raw"/>
@@ -60,7 +72,7 @@
   <group ns="robot2">
     <node pkg="move_base" type="move_base" name="move_base" output="screen"
           respawn="true" respawn_delay="3"
-          launch-prefix="bash -c 'sleep 6; $0 $@' ">
+          launch-prefix="bash -c 'sleep $(arg move_base_delay_robot2); $0 $@' ">
       <remap from="odom" to="/robot2/odom"/>
       <remap from="scan" to="/robot2/scan_filtered"/>
       <remap from="cmd_vel" to="/robot2/cmd_vel_raw"/>

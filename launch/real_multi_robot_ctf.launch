@@ -33,6 +33,8 @@
     2. STOP every ROS node on every PC (roscore included)
     3. Verify: date  and  rostopic echo /robot1/odom/header/stamp  differ < 2 s
     4. Start roscore, then robot bringups, then this launch
+    5. Bringup MUST publish namespaced TF: robotN/odom -> robotN/base_footprint
+       (check: rosrun tf2_tools view_frames.py  — one tree, not two)
 
     A ~7200 s extrapolation error almost always means NTP stepped the clock while
     ROS was still running — full restart is required, not just chrony.
@@ -86,6 +88,9 @@
     <arg name="robot2_x" value="$(arg robot2_x)"/>
     <arg name="robot2_y" value="$(arg robot2_y)"/>
     <arg name="robot2_yaw" value="$(arg robot2_yaw)"/>
+    <!-- Real: wait for gmapping + scans before costmaps request map->base_footprint -->
+    <arg name="move_base_delay_robot1" value="10"/>
+    <arg name="move_base_delay_robot2" value="14"/>
   </include>
 
   <!-- 4. Visión: detector de bandera por robot (Configurado para robots reales) -->
