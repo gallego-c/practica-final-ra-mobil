@@ -2,7 +2,9 @@
   <!--
     Kinematic chain for real TurtleBot3 with ROS namespaces.
 
-    Each robot SBC publishes robotN/odom -> robotN/base_footprint (wheel odom).
+    Each robot SBC publishes /robotN/odom (wheel odometry topic).
+    If bringup does NOT also broadcast robotN/odom -> robotN/base_footprint TF,
+    odom_tf_broadcaster.py fills that gap (publish_odom_tf, default true).
     This launch completes base_footprint -> base_link -> base_scan for GMapping.
 
     Do NOT also publish base_footprint -> base_scan (shortcut): it conflicts with
@@ -15,6 +17,13 @@
   <arg name="robot2_ns" default="robot2"/>
   <arg name="lidar_yaw" default="3.14159265359"/>
   <arg name="publish_kinematic_tf" default="true"/>
+  <!-- true when bringup publishes /robotN/odom but not robotN/odom->robotN/base_footprint TF -->
+  <arg name="publish_odom_tf" default="true"/>
+
+  <node if="$(arg publish_odom_tf)" pkg="ctf_navigation" type="odom_tf_broadcaster.py"
+        name="odom_tf_broadcaster" output="screen">
+    <rosparam param="robots" subst_value="True">[$(arg robot1_ns), $(arg robot2_ns)]</rosparam>
+  </node>
 
   <group if="$(arg publish_kinematic_tf)">
     <node pkg="tf2_ros" type="static_transform_publisher"
