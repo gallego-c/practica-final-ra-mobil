@@ -11,7 +11,7 @@
   <arg name="robot1_yaw" default="0.0"/>
   <arg name="robot2_x" default="1.50"/>
   <arg name="robot2_y" default="0.0"/>
-  <arg name="robot2_yaw" default="0.0"/>
+  <arg name="robot2_yaw" default="3.1416"/>
   <arg name="flag_x" default="0.0"/>
   <arg name="flag_y" default="0.0"/>
 
@@ -59,11 +59,11 @@
     <arg name="robot2_spawn_y" value="$(arg robot2_y)"/>
     <arg name="robot2_spawn_yaw" value="$(arg robot2_yaw)"/>
     <arg name="lidar_yaw" value="$(arg lidar_yaw)"/>
-    <arg name="robot1_init_x" value="$(eval arg('robot1_x') / 0.05)"/>
-    <arg name="robot1_init_y" value="$(eval arg('robot1_y') / 0.05)"/>
+    <arg name="robot1_init_x" value="$(arg robot1_x)"/>
+    <arg name="robot1_init_y" value="$(arg robot1_y)"/>
     <arg name="robot1_init_yaw" value="$(arg robot1_yaw)"/>
-    <arg name="robot2_init_x" value="$(eval arg('robot2_x') / 0.05)"/>
-    <arg name="robot2_init_y" value="$(eval arg('robot2_y') / 0.05)"/>
+    <arg name="robot2_init_x" value="$(arg robot2_x)"/>
+    <arg name="robot2_init_y" value="$(arg robot2_y)"/>
     <arg name="robot2_init_yaw" value="$(arg robot2_yaw)"/>
   </include>
 
