@@ -5,13 +5,13 @@
   <arg name="merged_map_topic" default="/merged_map"/>
   <arg name="rviz" default="true"/>
 
-  <!-- Robots reales: 3.00 m entre ellos, bandera en el centro del mapa -->
+  <!-- Robots reales: ±1.5 m del centro (3 m entre ellos), cara a cara en +X -->
   <arg name="robot1_x" default="-1.50"/>
   <arg name="robot1_y" default="0.0"/>
-  <arg name="robot1_yaw" default="3.1416"/>
+  <arg name="robot1_yaw" default="0.0"/>
   <arg name="robot2_x" default="1.50"/>
   <arg name="robot2_y" default="0.0"/>
-  <arg name="robot2_yaw" default="0.0"/> <!-- 180 previously -->
+  <arg name="robot2_yaw" default="3.1416"/>
   <arg name="flag_x" default="0.0"/>
   <arg name="flag_y" default="0.0"/>
 

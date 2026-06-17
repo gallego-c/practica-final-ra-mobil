@@ -11,6 +11,7 @@
   <arg name="robot2_init_y" default="0.0"/>
   <arg name="robot2_init_yaw" default="0.0"/>
   <arg name="quiet_slam" default="true"/>
+  <!-- ±1.5 m del centro, 3 m entre robots, cara a cara (yaw 0 / pi) -->
   <arg name="robot1_spawn_x" default="-1.50"/>
   <arg name="robot1_spawn_y" default="0.0"/>
   <arg name="robot1_spawn_yaw" default="0.0"/>
