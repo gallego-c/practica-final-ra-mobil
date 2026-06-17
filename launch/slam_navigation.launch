@@ -23,13 +23,15 @@
         args="$(arg robot2_x) $(arg robot2_y) 0.0 $(arg robot2_yaw) 0.0 0.0 $(arg world_frame) robot2/map"/>
 
   <!-- Bootstrap: gmapping publishes robotN/map->robotN/odom only after the first scan.
-       Without this link, map and wheel odom are separate TF trees and move_base fails. -->
+       Without this link, map and wheel odom are separate TF trees and move_base fails.
+       Note: We comment these out because they conflict with GMapping's dynamic transforms.
   <node pkg="tf2_ros" type="static_transform_publisher"
         name="robot1_bootstrap_map_to_odom"
         args="0 0 0 0 0 0 robot1/map robot1/odom"/>
   <node pkg="tf2_ros" type="static_transform_publisher"
         name="robot2_bootstrap_map_to_odom"
         args="0 0 0 0 0 0 robot2/map robot2/odom"/>
+  -->
 
   <group ns="robot1">
     <node pkg="move_base" type="move_base" name="move_base" output="screen"
