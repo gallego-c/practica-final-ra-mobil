@@ -101,3 +101,11 @@ catkin_install_python(PROGRAMS
   scripts/slam_frontier_explorer_single.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
+
+install(FILES
+  scripts/ctf_scripts.py
+  scripts/frontier_map_utils.py
+  scripts/frontier_exploration_mixin.py
+  scripts/robot_cloud_utils.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)

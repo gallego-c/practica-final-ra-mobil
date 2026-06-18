@@ -45,27 +45,7 @@
   </include>
 
   <!-- ── Visión: detector de bandera por robot ──────────────────────────────-->
-  <group ns="robot1">
-    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
-          output="screen">
-      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
-      <param name="camera_topic" value="camera/rgb/image_raw"/>
-      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
-      <param name="scan_topic" value="scan"/>
-      <param name="base_frame" value="robot1/base_footprint"/>
-    </node>
-  </group>
-
-  <group ns="robot2">
-    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
-          output="screen">
-      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
-      <param name="camera_topic" value="camera/rgb/image_raw"/>
-      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
-      <param name="scan_topic" value="scan"/>
-      <param name="base_frame" value="robot2/base_footprint"/>
-    </node>
-  </group>
+  <include file="$(find ctf_navigation)/launch/include/flag_detectors.launch"/>
 
   <!-- ── Coordinador del juego (exploración + lógica CTF) ────────────────────-->
   <node pkg="ctf_navigation" type="ctf_coordinator_node" name="ctf_coordinator"

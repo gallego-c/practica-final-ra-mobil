@@ -17,47 +17,24 @@ import rospy
 import tf2_ros
 from actionlib_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped, Twist
-from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
+from move_base_msgs.msg import MoveBaseAction
 from nav_msgs.msg import OccupancyGrid
 from std_msgs.msg import Bool
 from visualization_msgs.msg import Marker, MarkerArray
 
-FREE_THRESH = 25
-NEIGHBORS_4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
+import ctf_scripts  # noqa: F401
+from frontier_exploration_mixin import FrontierExplorationMixin, load_robot_homes
+from frontier_map_utils import (
+    FREE_THRESH,
+    cell_index,
+    is_free,
+    map_to_world,
+    world_to_map,
+)
 
 
-def yaw_to_quaternion(yaw):
-    from tf.transformations import quaternion_from_euler
-    q = quaternion_from_euler(0, 0, yaw)
-    return q[0], q[1], q[2], q[3]
-
-
-def quat_to_yaw(q):
-    from tf.transformations import euler_from_quaternion
-    return euler_from_quaternion([q.x, q.y, q.z, q.w])[2]
-
-
-def cell_index(mx, my, width):
-    return my * width + mx
-
-
-def world_to_map(wx, wy, info):
-    mx = int((wx - info.origin.position.x) / info.resolution)
-    my = int((wy - info.origin.position.y) / info.resolution)
-    return mx, my
-
-
-def map_to_world(mx, my, info):
-    wx = info.origin.position.x + (mx + 0.5) * info.resolution
-    wy = info.origin.position.y + (my + 0.5) * info.resolution
-    return wx, wy
-
-
-def is_free(value):
-    return 0 <= value < FREE_THRESH
-
-
-class SlamFrontierExplorerCtf:
+class SlamFrontierExplorerCtf(FrontierExplorationMixin):
+    safe_goal_search_meters = 1.2
     def __init__(self):
         rospy.init_node('slam_frontier_explorer_ctf')
 
@@ -211,11 +188,7 @@ class SlamFrontierExplorerCtf:
         self._pursuit_start_dist = {}
         self._flag_visible_since = {}
 
-        # Robot homes
-        self.homes = {
-            'robot1': rospy.get_param('~robot1_home', [-3.0, -3.0, 0.0]),
-            'robot2': rospy.get_param('~robot2_home', [3.0, 3.0, 3.1416]),
-        }
+        self.homes = load_robot_homes()
 
         self._map = None
         self._map_lock = threading.Lock()
@@ -286,18 +259,6 @@ class SlamFrontierExplorerCtf:
             self._log_event('brief logging — phases, goals, capture/chase only')
         else:
             rospy.loginfo('SlamFrontierExplorerCtf: initialized (log_mode=verbose).')
-
-    def _wait_for_all_move_base(self):
-        deadline = rospy.Time.now() + rospy.Duration(self.move_base_timeout)
-        pending = set(self._clients.keys())
-        rate = rospy.Rate(2.0)
-        while pending and rospy.Time.now() < deadline and not rospy.is_shutdown():
-            for ns in list(pending):
-                if self._clients[ns].wait_for_server(rospy.Duration(0.1)):
-                    rospy.loginfo('%s move_base ready', ns)
-                    pending.discard(ns)
-            rate.sleep()
-        return not pending
 
     def _flag_found_cb(self, msg, ns):
         now = time.monotonic()
@@ -615,71 +576,13 @@ class SlamFrontierExplorerCtf:
         candidates.sort(key=lambda c: c[2])
         return candidates[0][0], candidates[0][1]
 
-    def _map_cb(self, msg):
-        with self._map_lock:
-            self._map = msg
-
     def _robot_map_cb(self, msg, ns):
         with self._robot_map_lock:
             self._robot_maps[ns] = msg
 
-    def _get_map(self):
-        with self._map_lock:
-            return self._map
-
     def _get_robot_map(self, ns):
         with self._robot_map_lock:
             return self._robot_maps.get(ns)
-
-    def _coverage(self, grid):
-        if grid is None or not grid.data:
-            return 0.0
-        known = sum(1 for v in grid.data if v >= 0)
-        return float(known) / float(len(grid.data))
-
-    def _unknown_count(self, grid):
-        if grid is None:
-            return 10 ** 9
-        return sum(1 for v in grid.data if v < 0)
-
-    def _get_robot_pose(self, base_frame):
-        try:
-            tf = self._tf_buffer.lookup_transform(
-                self.map_frame, base_frame, rospy.Time(0), rospy.Duration(0.3))
-            yaw = quat_to_yaw(tf.transform.rotation)
-            return (tf.transform.translation.x,
-                    tf.transform.translation.y, yaw)
-        except (tf2_ros.LookupException, tf2_ros.ConnectivityException,
-                tf2_ros.ExtrapolationException):
-            return None
-
-    def _all_robot_poses(self):
-        poses = {}
-        for cfg in self.robots:
-            p = self._get_robot_pose(cfg['base_frame'])
-            if p is not None:
-                poses[cfg['ns']] = p
-        return poses
-
-    def _blacklist_key(self, wx, wy):
-        return (round(wx, 1), round(wy, 1))
-
-    def _is_blacklisted(self, wx, wy):
-        key = self._blacklist_key(wx, wy)
-        now = time.monotonic()
-        with self._blacklist_lock:
-            exp = self._blacklist.get(key)
-            if exp is None:
-                return False
-            if now >= exp:
-                del self._blacklist[key]
-                return False
-            return True
-
-    def _blacklist_goal(self, wx, wy, duration=50.0):
-        key = self._blacklist_key(wx, wy)
-        with self._blacklist_lock:
-            self._blacklist[key] = time.monotonic() + duration
 
     def _claim_frontier(self, ns, wx, wy):
         key = self._blacklist_key(wx, wy)
@@ -704,90 +607,6 @@ class SlamFrontierExplorerCtf:
         self._spin_to_scan(ns, spin_sec)
         self._last_flag_goal.pop(ns, None)
         self._last_flag_goal_time.pop(ns, None)
-
-    def _find_frontiers(self, grid):
-        info = grid.info
-        w, h = info.width, info.height
-        data = grid.data
-        frontier_cells = []
-
-        for my in range(1, h - 1):
-            for mx in range(1, w - 1):
-                idx = cell_index(mx, my, w)
-                if not is_free(data[idx]):
-                    continue
-                for dx, dy in NEIGHBORS_4:
-                    if data[cell_index(mx + dx, my + dy, w)] < 0:
-                        frontier_cells.append((mx, my))
-                        break
-
-        if not frontier_cells:
-            return []
-
-        bucket = max(3, int(0.30 / info.resolution))
-        clusters = {}
-        for mx, my in frontier_cells:
-            key = (mx // bucket, my // bucket)
-            clusters.setdefault(key, []).append((mx, my))
-
-        centroids = []
-        for cells in clusters.values():
-            if len(cells) < self.min_frontier_points:
-                continue
-            sx = sum(c[0] for c in cells)
-            sy = sum(c[1] for c in cells)
-            n = len(cells)
-            cmx, cmy = sx // n, sy // n
-            wx, wy = map_to_world(cmx, cmy, info)
-            mx, my = world_to_map(wx, wy, info)
-            if 0 <= mx < w and 0 <= my < h and is_free(data[cell_index(mx, my, w)]):
-                centroids.append((wx, wy, len(cells)))
-        return centroids
-
-    def _cell_has_clearance(self, grid, mx, my):
-        info = grid.info
-        w, h = info.width, info.height
-        data = grid.data
-        clear_cells = max(1, int(round(self.min_goal_clearance / info.resolution)))
-
-        if mx < clear_cells or my < clear_cells or mx >= w - clear_cells or my >= h - clear_cells:
-            return False
-
-        center_val = data[cell_index(mx, my, w)]
-        if not is_free(center_val):
-            return False
-
-        for dy in range(-clear_cells, clear_cells + 1):
-            for dx in range(-clear_cells, clear_cells + 1):
-                value = data[cell_index(mx + dx, my + dy, w)]
-                if value >= FREE_THRESH:
-                    return False
-        return True
-
-    def _safe_goal_near_frontier(self, grid, wx, wy):
-        info = grid.info
-        mx, my = world_to_map(wx, wy, info)
-        search_cells = max(2, int(round(1.2 / info.resolution)))
-
-        best = None
-        best_dist = float('inf')
-        for radius in range(0, search_cells + 1):
-            for dy in range(-radius, radius + 1):
-                for dx in range(-radius, radius + 1):
-                    if abs(dx) != radius and abs(dy) != radius:
-                        continue
-                    cx = mx + dx
-                    cy = my + dy
-                    if not self._cell_has_clearance(grid, cx, cy):
-                        continue
-                    gx, gy = map_to_world(cx, cy, info)
-                    d = math.hypot(gx - wx, gy - wy)
-                    if d < best_dist:
-                        best_dist = d
-                        best = (gx, gy)
-            if best is not None:
-                return best
-        return None
 
     def _territory_penalty_for(self, ns, wx, wy):
         """Penalize frontiers on the teammate's side of the map (diagonal x+y=0)."""
@@ -837,7 +656,6 @@ class SlamFrontierExplorerCtf:
     def _pick_frontier(self, ns, robot_xy, frontiers, all_poses, strict_voronoi=True):
         best = None
         best_score = float('inf')
-        used_fallback = False
 
         has_flag_hint, flag_xy = self._get_fresh_flag_estimate(ns)
         flag_source = self._flag_estimate_source(ns)
@@ -886,21 +704,7 @@ class SlamFrontierExplorerCtf:
                 best = (wx, wy, size)
 
         if best is None and strict_voronoi:
-            used_fallback = True
-            best, best_sep = self._pick_frontier_by_separation(ns, robot_xy, frontiers, all_poses)
-        else:
-            best_sep = None
-
-        if best is not None:
-            other_pose = None
-            for other_ns, other_xy in all_poses.items():
-                if other_ns != ns:
-                    other_pose = other_xy
-                    break
-            inter_robot = None
-            if other_pose is not None:
-                inter_robot = math.hypot(robot_xy[0] - other_pose[0], robot_xy[1] - other_pose[1])
-
+            best, _ = self._pick_frontier_by_separation(ns, robot_xy, frontiers, all_poses)
 
         return best
 
@@ -970,18 +774,8 @@ class SlamFrontierExplorerCtf:
             self._make_goal(wx, wy, yaw, ns=self.pursuer_ns))
 
     def _make_goal(self, wx, wy, yaw, ns=None):
-        qx, qy, qz, qw = yaw_to_quaternion(yaw)
-        goal = MoveBaseGoal()
-        goal.target_pose.header.frame_id = (
-            ns + '/map' if ns else self.map_frame)
-        goal.target_pose.header.stamp = rospy.Time.now()
-        goal.target_pose.pose.position.x = wx
-        goal.target_pose.pose.position.y = wy
-        goal.target_pose.pose.orientation.x = qx
-        goal.target_pose.pose.orientation.y = qy
-        goal.target_pose.pose.orientation.z = qz
-        goal.target_pose.pose.orientation.w = qw
-        return goal
+        frame_id = ns + '/map' if ns else self.map_frame
+        return self._make_move_base_goal(wx, wy, yaw, frame_id=frame_id)
 
     def _wait_for_goal(self, ns, client, base_frame, goal_xy, timeout):
         deadline = rospy.Time.now() + rospy.Duration(timeout)

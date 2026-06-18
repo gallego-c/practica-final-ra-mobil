@@ -1,0 +1,13 @@
+<launch>
+  <!-- Vision-based flag detectors for both robots. -->
+  <arg name="map_frame" default="map"/>
+
+  <include file="$(find ctf_navigation)/launch/include/flag_detector.launch">
+    <arg name="robot_ns" value="robot1"/>
+    <arg name="map_frame" value="$(arg map_frame)"/>
+  </include>
+  <include file="$(find ctf_navigation)/launch/include/flag_detector.launch">
+    <arg name="robot_ns" value="robot2"/>
+    <arg name="map_frame" value="$(arg map_frame)"/>
+  </include>
+</launch>

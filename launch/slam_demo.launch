@@ -77,29 +77,10 @@
     <param name="idle_frontier_cycles" value="12"/>
   </node>
 
-  <group if="$(eval arg('run_demo') == 'true' and arg('run_ctf') == 'true')"
-         ns="robot1">
-    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
-          output="screen">
-      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
-      <param name="camera_topic" value="camera/rgb/image_raw"/>
-      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
-      <param name="base_frame" value="robot1/base_footprint"/>
-      <param name="map_frame" value="$(arg world_frame)"/>
-    </node>
-  </group>
-
-  <group if="$(eval arg('run_demo') == 'true' and arg('run_ctf') == 'true')"
-         ns="robot2">
-    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
-          output="screen">
-      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
-      <param name="camera_topic" value="camera/rgb/image_raw"/>
-      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
-      <param name="base_frame" value="robot2/base_footprint"/>
-      <param name="map_frame" value="$(arg world_frame)"/>
-    </node>
-  </group>
+  <include if="$(eval arg('run_demo') == 'true' and arg('run_ctf') == 'true')"
+           file="$(find ctf_navigation)/launch/include/flag_detectors.launch">
+    <arg name="map_frame" value="$(arg world_frame)"/>
+  </include>
 
   <node if="$(eval arg('run_demo') == 'true' and arg('run_ctf') == 'true')"
         pkg="ctf_navigation" type="ctf_coordinator_node"

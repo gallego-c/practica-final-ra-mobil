@@ -1,0 +1,17 @@
+<launch>
+  <!-- Vision-based flag detector for one robot namespace. -->
+  <arg name="robot_ns"/>
+  <arg name="map_frame" default="map"/>
+
+  <group ns="$(arg robot_ns)">
+    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
+          output="screen">
+      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
+      <param name="camera_topic" value="camera/rgb/image_raw"/>
+      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
+      <param name="scan_topic" value="scan"/>
+      <param name="base_frame" value="$(arg robot_ns)/base_footprint"/>
+      <param name="map_frame" value="$(arg map_frame)"/>
+    </node>
+  </group>
+</launch>

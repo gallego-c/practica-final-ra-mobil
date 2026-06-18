@@ -14,44 +14,24 @@ import actionlib
 import rospy
 import tf2_ros
 from actionlib_msgs.msg import GoalStatus
-from geometry_msgs.msg import PoseStamped, Twist
+from geometry_msgs.msg import Twist
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from nav_msgs.msg import OccupancyGrid
 from std_msgs.msg import Bool
 
-FREE_THRESH = 25
-NEIGHBORS_4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
-
-
-def yaw_to_quaternion(yaw):
-    from tf.transformations import quaternion_from_euler
-    q = quaternion_from_euler(0, 0, yaw)
-    return q[0], q[1], q[2], q[3]
-
-
-def quat_to_yaw(q):
-    from tf.transformations import euler_from_quaternion
-    return euler_from_quaternion([q.x, q.y, q.z, q.w])[2]
-
-
-def cell_index(mx, my, width):
-    return my * width + mx
-
-
-def world_to_map(wx, wy, info):
-    mx = int((wx - info.origin.position.x) / info.resolution)
-    my = int((wy - info.origin.position.y) / info.resolution)
-    return mx, my
-
-
-def map_to_world(mx, my, info):
-    wx = info.origin.position.x + (mx + 0.5) * info.resolution
-    wy = info.origin.position.y + (my + 0.5) * info.resolution
-    return wx, wy
-
-
-def is_free(value):
-    return 0 <= value < FREE_THRESH
+import ctf_scripts  # noqa: F401
+from frontier_map_utils import (
+    FREE_THRESH,
+    NEIGHBORS_4,
+    cell_index,
+    coverage,
+    is_free,
+    map_to_world,
+    quat_to_yaw,
+    unknown_count,
+    world_to_map,
+    yaw_to_quaternion,
+)
 
 
 class SlamSingleFrontierExplorer:
@@ -111,15 +91,10 @@ class SlamSingleFrontierExplorer:
             return self._map
 
     def _coverage(self, grid):
-        if grid is None or not grid.data:
-            return 0.0
-        known = sum(1 for v in grid.data if v >= 0)
-        return float(known) / float(len(grid.data))
+        return coverage(grid)
 
     def _unknown_count(self, grid):
-        if grid is None:
-            return 10 ** 9
-        return sum(1 for v in grid.data if v < 0)
+        return unknown_count(grid)
 
     def _get_robot_pose(self):
         try:

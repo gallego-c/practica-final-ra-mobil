@@ -1,0 +1,26 @@
+<launch>
+  <!-- Spawns one TurtleBot3 Waffle Pi in Gazebo under the given namespace. -->
+  <arg name="robot_ns"/>
+  <arg name="robot_x"/>
+  <arg name="robot_y"/>
+  <arg name="robot_yaw"/>
+
+  <group ns="$(arg robot_ns)">
+    <param name="tf_prefix" value="$(arg robot_ns)"/>
+    <param name="robot_description"
+           command="$(find xacro)/xacro $(find turtlebot3_description)/urdf/turtlebot3_waffle_pi.urdf.xacro"/>
+
+    <node pkg="robot_state_publisher" type="robot_state_publisher"
+          name="robot_state_publisher" output="screen">
+      <param name="publish_frequency" value="50.0"/>
+      <remap from="/tf" to="/tf"/>
+      <remap from="/tf_static" to="/tf_static"/>
+    </node>
+
+    <node pkg="gazebo_ros" type="spawn_model" name="spawn_$(arg robot_ns)" output="screen"
+          args="-urdf -model $(arg robot_ns)
+                -x $(arg robot_x) -y $(arg robot_y) -z 0.0 -Y $(arg robot_yaw)
+                -param robot_description
+                -robot_namespace /$(arg robot_ns)"/>
+  </group>
+</launch>

@@ -69,29 +69,9 @@
   </include>
 
   <!-- 5. Visión: detector de bandera por robot -->
-  <group ns="robot1">
-    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
-          output="screen">
-      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
-      <param name="camera_topic" value="camera/rgb/image_raw"/>
-      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
-      <param name="scan_topic" value="scan"/>
-      <param name="base_frame" value="robot1/base_footprint"/>
-      <param name="map_frame" value="$(arg world_frame)"/>
-    </node>
-  </group>
-
-  <group ns="robot2">
-    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
-          output="screen">
-      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
-      <param name="camera_topic" value="camera/rgb/image_raw"/>
-      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
-      <param name="scan_topic" value="scan"/>
-      <param name="base_frame" value="robot2/base_footprint"/>
-      <param name="map_frame" value="$(arg world_frame)"/>
-    </node>
-  </group>
+  <include file="$(find ctf_navigation)/launch/include/flag_detectors.launch">
+    <arg name="map_frame" value="$(arg world_frame)"/>
+  </include>
 
   <!-- 6. Autonomous exploration + CTF Game Coordinator -->
   <node pkg="ctf_navigation" type="slam_frontier_explorer_ctf.py"
@@ -154,10 +134,6 @@
     <param name="intercept_arrival_margin" value="0.30"/>
     <param name="intercept_step" value="0.25"/>
     <param name="intercept_min_lead" value="1.0"/>
-
-    <!-- Home coordinates (match Gazebo spawn poses) -->
-    <rosparam param="robot1_home" subst_value="True">[$(arg robot1_x), $(arg robot1_y), $(arg robot1_yaw)]</rosparam>
-    <rosparam param="robot2_home" subst_value="True">[$(arg robot2_x), $(arg robot2_y), $(arg robot2_yaw)]</rosparam>
   </node>
 
   <!-- 7. RViz: merged SLAM map, per-robot costmaps, and navigation plans -->
