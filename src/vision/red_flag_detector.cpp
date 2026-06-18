@@ -78,6 +78,28 @@ RedDetection detectRedBlob(const cv::Mat& bgr, const RedDetectorConfig& cfg)
     result.found = false;
     return result;
   }
+  if (cfg.max_blob_area > 0 && result.area > cfg.max_blob_area)
+  {
+    result.found = false;
+    return result;
+  }
+
+  // ── Filtro de aspect ratio (ancho / alto) ──
+  // Rechaza blobs cuya forma no encaja con la bandera (cartulina rectangular).
+  // Extintores (altos y estrechos) tienen aspect ratio bajo (< 0.4).
+  // Paredes largas y horizontales tienen aspect ratio muy alto (> 5).
+  if (cfg.min_aspect_ratio > 0.0 || cfg.max_aspect_ratio < 99.0)
+  {
+    const cv::Rect br = cv::boundingRect(contours[best_idx]);
+    const double aspect = (br.height > 0)
+                              ? static_cast<double>(br.width) / br.height
+                              : 0.0;
+    if (aspect < cfg.min_aspect_ratio || aspect > cfg.max_aspect_ratio)
+    {
+      result.found = false;
+      return result;
+    }
+  }
 
   const cv::Moments m = cv::moments(contours[best_idx]);
   if (m.m00 <= 0.0)

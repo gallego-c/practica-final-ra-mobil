@@ -17,6 +17,9 @@ struct RedDetectorConfig
   int s_min = 120;
   int v_min = 70;
   int min_blob_area = 200;
+  int max_blob_area = 0;             // área máxima (0 = sin límite)
+  double min_aspect_ratio = 0.0;   // ancho/alto mínimo (0 = sin filtro)
+  double max_aspect_ratio = 100.0; // ancho/alto máximo (100 = sin filtro)
   bool use_rgb_fallback = true;
   int rgb_red_min = 80;
   double rgb_red_dominance = 1.25;

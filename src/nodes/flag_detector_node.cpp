@@ -397,6 +397,7 @@ FlagDetectorConfig loadConfig(ros::NodeHandle& pnh)
   pnh.param("max_image_age", cfg.max_image_age, cfg.max_image_age);
   pnh.param("publish_debug", cfg.publish_debug, cfg.publish_debug);
   pnh.param("min_blob_area", cfg.red.min_blob_area, cfg.red.min_blob_area);
+  pnh.param("max_blob_area", cfg.red.max_blob_area, cfg.red.max_blob_area);
   pnh.param("h_low1", cfg.red.h_low1, cfg.red.h_low1);
   pnh.param("h_high1", cfg.red.h_high1, cfg.red.h_high1);
   pnh.param("h_low2", cfg.red.h_low2, cfg.red.h_low2);
@@ -408,6 +409,10 @@ FlagDetectorConfig loadConfig(ros::NodeHandle& pnh)
   pnh.param("rgb_red_min", cfg.red.rgb_red_min, cfg.red.rgb_red_min);
   pnh.param("rgb_red_dominance", cfg.red.rgb_red_dominance,
             cfg.red.rgb_red_dominance);
+  pnh.param("min_aspect_ratio", cfg.red.min_aspect_ratio,
+            cfg.red.min_aspect_ratio);
+  pnh.param("max_aspect_ratio", cfg.red.max_aspect_ratio,
+            cfg.red.max_aspect_ratio);
   return cfg;
 }
 
