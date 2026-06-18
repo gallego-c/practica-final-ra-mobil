@@ -11,7 +11,7 @@
   <arg name="robot1_yaw" default="0.0"/>
   <arg name="robot2_x" default="1.50"/>
   <arg name="robot2_y" default="0.0"/>
-  <arg name="robot2_yaw" default="3.1416"/>
+  <arg name="robot2_yaw" default="0.0"/>
   <arg name="flag_x" default="0.0"/>
   <arg name="flag_y" default="0.0"/>
 
