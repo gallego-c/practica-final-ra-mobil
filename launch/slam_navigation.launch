@@ -10,26 +10,27 @@
   <arg name="robot2_yaw" default="0.0"/>
   <arg name="move_base_delay_robot1" default="8"/>
   <arg name="move_base_delay_robot2" default="12"/>
+  <arg name="publish_world_tf" default="true"/>
 
-  <!-- Connect world_frame (map) to each robot SLAM map frame.
-       Values MUST match map_merge init_pose_* (see map_merge.launch).
-       TF chain: map -> robotN/map -> robotN/odom -> robotN/base_footprint -->
-  <node pkg="tf2_ros" type="static_transform_publisher"
-        name="robot1_static_map_to_map"
-        args="$(arg robot1_x) $(arg robot1_y) 0.0 $(arg robot1_yaw) 0.0 0.0 $(arg world_frame) robot1/map"/>
+  <include if="$(arg publish_world_tf)" file="$(find ctf_navigation)/launch/slam_world_tf.launch">
+    <arg name="world_frame" value="$(arg world_frame)"/>
+    <arg name="robot1_x" value="$(arg robot1_x)"/>
+    <arg name="robot1_y" value="$(arg robot1_y)"/>
+    <arg name="robot1_yaw" value="$(arg robot1_yaw)"/>
+    <arg name="robot2_x" value="$(arg robot2_x)"/>
+    <arg name="robot2_y" value="$(arg robot2_y)"/>
+    <arg name="robot2_yaw" value="$(arg robot2_yaw)"/>
+  </include>
 
-  <node pkg="tf2_ros" type="static_transform_publisher"
-        name="robot2_static_map_to_map"
-        args="$(arg robot2_x) $(arg robot2_y) 0.0 $(arg robot2_yaw) 0.0 0.0 $(arg world_frame) robot2/map"/>
-
-  <!-- Bootstrap: gmapping publishes robotN/map->robotN/odom only after the first scan.
-       Without this link, map and wheel odom are separate TF trees and move_base fails. -->
+  <!-- TF chain: map -> robotN/map -> robotN/odom -> robotN/base_footprint -->
+  <!-- Bootstrap map->odom omitted: conflicts with GMapping dynamic transforms.
   <node pkg="tf2_ros" type="static_transform_publisher"
         name="robot1_bootstrap_map_to_odom"
         args="0 0 0 0 0 0 robot1/map robot1/odom"/>
   <node pkg="tf2_ros" type="static_transform_publisher"
         name="robot2_bootstrap_map_to_odom"
         args="0 0 0 0 0 0 robot2/map robot2/odom"/>
+  -->
 
   <group ns="robot1">
     <node pkg="move_base" type="move_base" name="move_base" output="screen"

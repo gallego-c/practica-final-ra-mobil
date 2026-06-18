@@ -68,7 +68,7 @@ class LaserObstacleFilter:
         self.other_ns = 'robot2' if self.self_ns == 'robot1' else 'robot1'
         self.spawn = {
             'robot1': rospy.get_param('~robot1_spawn', [-1.5, 0.0, 0.0]),
-            'robot2': rospy.get_param('~robot2_spawn', [1.5, 0.0, 3.1416]),
+            'robot2': rospy.get_param('~robot2_spawn', [1.5, 0.0, 0.0]),
         }
         self.odom = {'robot1': None, 'robot2': None}
 

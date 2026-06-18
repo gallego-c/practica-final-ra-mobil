@@ -1,0 +1,18 @@
+<launch>
+  <!-- Static map -> robotN/map. Must exist BEFORE map merge and gmapping. -->
+  <arg name="world_frame" default="map"/>
+  <arg name="robot1_x" default="0.0"/>
+  <arg name="robot1_y" default="0.0"/>
+  <arg name="robot1_yaw" default="0.0"/>
+  <arg name="robot2_x" default="0.0"/>
+  <arg name="robot2_y" default="0.0"/>
+  <arg name="robot2_yaw" default="0.0"/>
+
+  <node pkg="tf2_ros" type="static_transform_publisher"
+        name="robot1_static_map_to_map"
+        args="$(arg robot1_x) $(arg robot1_y) 0.0 $(arg robot1_yaw) 0.0 0.0 $(arg world_frame) robot1/map"/>
+
+  <node pkg="tf2_ros" type="static_transform_publisher"
+        name="robot2_static_map_to_map"
+        args="$(arg robot2_x) $(arg robot2_y) 0.0 $(arg robot2_yaw) 0.0 0.0 $(arg world_frame) robot2/map"/>
+</launch>

@@ -5,17 +5,27 @@
   <arg name="merged_map_topic" default="/merged_map"/>
   <arg name="rviz" default="true"/>
 
-  <!-- Robots reales: ±1.5 m del centro (3 m entre ellos), cara a cara en +X -->
+  <!-- Robots reales: ±1.5 m del centro (3 m entre ellos), mismo yaw (+X) -->
   <arg name="robot1_x" default="-1.50"/>
   <arg name="robot1_y" default="0.0"/>
   <arg name="robot1_yaw" default="0.0"/>
   <arg name="robot2_x" default="1.50"/>
   <arg name="robot2_y" default="0.0"/>
-  <arg name="robot2_yaw" default="3.1416"/>
+  <arg name="robot2_yaw" default="0.0"/>
+
+  <!-- map_merge lee init_pose al descubrir /robotN/map — poner ANTES de shared_slam -->
+  <param name="/robot1/map_merge/init_pose_x" value="$(arg robot1_x)"/>
+  <param name="/robot1/map_merge/init_pose_y" value="$(arg robot1_y)"/>
+  <param name="/robot1/map_merge/init_pose_z" value="0.0"/>
+  <param name="/robot1/map_merge/init_pose_yaw" value="$(arg robot1_yaw)"/>
+  <param name="/robot2/map_merge/init_pose_x" value="$(arg robot2_x)"/>
+  <param name="/robot2/map_merge/init_pose_y" value="$(arg robot2_y)"/>
+  <param name="/robot2/map_merge/init_pose_z" value="0.0"/>
+  <param name="/robot2/map_merge/init_pose_yaw" value="$(arg robot2_yaw)"/>
   <arg name="flag_x" default="0.0"/>
   <arg name="flag_y" default="0.0"/>
 
-  <!-- lidar_yaw: rotación base_link->base_scan. 0 = URDF stock; 3.1416 solo si LD08 montado físicamente al revés -->
+  <!-- LiDAR LD08 físico montado 180° respecto al URDF stock (probar 0.0 si el mapa sale girado) -->
   <arg name="lidar_yaw" default="0.0"/>
   <!-- false si el bringup del robot ya publica base_footprint->base_link->base_scan -->
   <arg name="publish_kinematic_tf" default="true"/>
@@ -44,11 +54,37 @@
   -->
   <node pkg="ctf_navigation" type="clock_drift_check.py" name="clock_drift_check" output="screen"/>
 
+  <!-- TF map->robotN/map ANTES de gmapping/merge (si va después, el merge no la usa) -->
+  <include file="$(find ctf_navigation)/launch/slam_world_tf.launch">
+    <arg name="world_frame" value="$(arg world_frame)"/>
+    <arg name="robot1_x" value="$(arg robot1_x)"/>
+    <arg name="robot1_y" value="$(arg robot1_y)"/>
+    <arg name="robot1_yaw" value="$(arg robot1_yaw)"/>
+    <arg name="robot2_x" value="$(arg robot2_x)"/>
+    <arg name="robot2_y" value="$(arg robot2_y)"/>
+    <arg name="robot2_yaw" value="$(arg robot2_yaw)"/>
+  </include>
+
+  <node pkg="ctf_navigation" type="launch_config_echo.py" name="launch_config_echo"
+        output="screen">
+    <param name="world_frame" value="$(arg world_frame)"/>
+    <param name="map_merge_mode" value="tf"/>
+    <rosparam param="robots">[robot1, robot2]</rosparam>
+  </node>
+
   <!-- base_footprint -> base_link -> base_scan (evita atajo directo a base_scan que desalinea láser y mapas) -->
   <include file="$(find ctf_navigation)/launch/real_robot_tf.launch">
     <arg name="lidar_yaw" value="$(arg lidar_yaw)"/>
     <arg name="publish_kinematic_tf" value="$(arg publish_kinematic_tf)"/>
+    <arg name="publish_odom_tf" value="true"/>
   </include>
+
+  <node pkg="ctf_navigation" type="map_merge_debug.py" name="map_merge_debug"
+        output="screen">
+    <param name="world_frame" value="$(arg world_frame)"/>
+    <param name="merged_map_topic" value="$(arg merged_map_topic)"/>
+    <rosparam param="robots">[robot1, robot2]</rosparam>
+  </node>
 
   <!-- 1. Shared SLAM (GMapping for both robots & map_merge) -->
   <include file="$(find ctf_navigation)/launch/shared_slam.launch">
@@ -68,6 +104,13 @@
     <arg name="robot2_init_x" value="$(arg robot2_x)"/>
     <arg name="robot2_init_y" value="$(arg robot2_y)"/>
     <arg name="robot2_init_yaw" value="$(arg robot2_yaw)"/>
+    <arg name="skip_map_merge" value="true"/>
+  </include>
+
+  <!-- Fusión por TF (misma posición que RViz); NO usar multirobot_map_merge en real -->
+  <include file="$(find ctf_navigation)/launch/map_merge_tf.launch">
+    <arg name="world_frame" value="$(arg world_frame)"/>
+    <arg name="merged_map_topic" value="$(arg merged_map_topic)"/>
   </include>
 
   <!-- 2. Inter-robot priority coordination & collision avoidance -->
@@ -94,6 +137,7 @@
     <!-- Real: wait for gmapping + scans before costmaps request map->base_footprint -->
     <arg name="move_base_delay_robot1" value="10"/>
     <arg name="move_base_delay_robot2" value="14"/>
+    <arg name="publish_world_tf" value="false"/>
   </include>
 
   <!-- 4. Visión: detector de bandera por robot (Configurado para robots reales) -->
