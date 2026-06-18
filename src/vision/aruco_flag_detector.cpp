@@ -4,87 +4,12 @@
 #include <opencv2/imgproc.hpp>
 
 #include <cstdio>
+#include <string>
 
 namespace ctf_navigation
 {
 namespace vision
 {
-
-// Intenta detectar el marcador en un diccionario concreto.
-static bool tryDetect(const cv::Mat& input, int dict_id, int target_marker_id,
-                      ArucoDetection& result)
-{
-  // ── Sharpening (unsharp mask) para imágenes borrosas ──
-  cv::Mat sharpened;
-  cv::GaussianBlur(input, sharpened, cv::Size(0, 0), 2.0);
-  cv::addWeighted(input, 1.5, sharpened, -0.5, 0, sharpened);
-
-  cv::Ptr<cv::aruco::Dictionary> dictionary =
-      cv::aruco::getPredefinedDictionary(dict_id);
-  cv::Ptr<cv::aruco::DetectorParameters> params =
-      cv::aruco::DetectorParameters::create();
-
-  // Parámetros más tolerantes para imágenes comprimidas/borrosas
-  params->adaptiveThreshWinSizeMin = 3;
-  params->adaptiveThreshWinSizeMax = 23;
-  params->adaptiveThreshWinSizeStep = 4;
-  params->minMarkerPerimeterRate = 0.01;   // detectar marcadores más pequeños
-  params->maxMarkerPerimeterRate = 4.0;
-  params->polygonalApproxAccuracyRate = 0.08;  // más tolerante con bordes imperfectos
-  params->perspectiveRemoveIgnoredMarginPerCell = 0.2;
-
-  std::vector<int> ids;
-  std::vector<std::vector<cv::Point2f>> corners;
-  cv::aruco::detectMarkers(sharpened, dictionary, corners, ids, params);
-
-  if (ids.empty())
-  {
-    return false;
-  }
-
-  // Buscar el marcador con el ID objetivo
-  int target_idx = -1;
-  for (size_t i = 0; i < ids.size(); ++i)
-  {
-    if (ids[i] == target_marker_id)
-    {
-      target_idx = static_cast<int>(i);
-      break;
-    }
-  }
-
-  if (target_idx < 0)
-  {
-    return false;
-  }
-
-  // Calcular centroide como media de las 4 esquinas
-  const auto& c = corners[static_cast<size_t>(target_idx)];
-  result.corners = c;
-
-  double cx = 0.0, cy = 0.0;
-  for (const auto& pt : c)
-  {
-    cx += pt.x;
-    cy += pt.y;
-  }
-  result.centroid_x = cx / 4.0;
-  result.centroid_y = cy / 4.0;
-
-  // Área del cuadrilátero (Shoelace formula)
-  double area = 0.0;
-  for (size_t i = 0; i < c.size(); ++i)
-  {
-    size_t j = (i + 1) % c.size();
-    area += c[i].x * c[j].y;
-    area -= c[j].x * c[i].y;
-  }
-  result.area = std::abs(area) / 2.0;
-
-  result.found = true;
-  result.detected_dict_id = dict_id;
-  return true;
-}
 
 // Nombres legibles de los diccionarios para logging.
 static const char* dictName(int id)
@@ -108,36 +33,171 @@ static const char* dictName(int id)
     case 14: return "7X7_250";
     case 15: return "7X7_1000";
     case 16: return "ARUCO_ORIGINAL";
+    case 17: return "APRILTAG_16h5";
+    case 18: return "APRILTAG_25h9";
+    case 19: return "APRILTAG_36h10";
+    case 20: return "APRILTAG_36h11";
     default: return "UNKNOWN";
   }
+}
+
+// Parámetros tolerantes para imágenes borrosas/comprimidas.
+static cv::Ptr<cv::aruco::DetectorParameters> makeTolerantParams()
+{
+  cv::Ptr<cv::aruco::DetectorParameters> params =
+      cv::aruco::DetectorParameters::create();
+  params->adaptiveThreshWinSizeMin = 3;
+  params->adaptiveThreshWinSizeMax = 53;
+  params->adaptiveThreshWinSizeStep = 4;
+  params->adaptiveThreshConstant = 7;
+  params->minMarkerPerimeterRate = 0.005;
+  params->maxMarkerPerimeterRate = 4.0;
+  params->polygonalApproxAccuracyRate = 0.1;
+  params->minCornerDistanceRate = 0.02;
+  params->minDistanceToBorder = 1;
+  params->perspectiveRemoveIgnoredMarginPerCell = 0.25;
+  params->maxErroneousBitsInBorderRate = 0.5;
+  params->errorCorrectionRate = 1.0;  // máxima corrección de errores
+  return params;
+}
+
+// Intenta detectar el marcador target_marker_id en un diccionario.
+// Si target_marker_id == -1, acepta CUALQUIER marcador.
+static bool tryDetect(const cv::Mat& image, int dict_id, int target_marker_id,
+                      ArucoDetection& result,
+                      std::vector<int>* all_found_ids = nullptr)
+{
+  cv::Ptr<cv::aruco::Dictionary> dictionary =
+      cv::aruco::getPredefinedDictionary(dict_id);
+  cv::Ptr<cv::aruco::DetectorParameters> params = makeTolerantParams();
+
+  std::vector<int> ids;
+  std::vector<std::vector<cv::Point2f>> corners;
+  cv::aruco::detectMarkers(image, dictionary, corners, ids, params);
+
+  // Guardar todos los IDs encontrados para logging
+  if (all_found_ids && !ids.empty())
+  {
+    for (int id : ids)
+    {
+      all_found_ids->push_back(id);
+    }
+  }
+
+  if (ids.empty())
+  {
+    return false;
+  }
+
+  // Buscar el marcador con el ID objetivo (-1 = acepta cualquiera)
+  int target_idx = -1;
+  for (size_t i = 0; i < ids.size(); ++i)
+  {
+    if (target_marker_id < 0 || ids[i] == target_marker_id)
+    {
+      target_idx = static_cast<int>(i);
+      break;
+    }
+  }
+
+  if (target_idx < 0)
+  {
+    return false;
+  }
+
+  const auto& c = corners[static_cast<size_t>(target_idx)];
+  result.corners = c;
+
+  double cx = 0.0, cy = 0.0;
+  for (const auto& pt : c)
+  {
+    cx += pt.x;
+    cy += pt.y;
+  }
+  result.centroid_x = cx / 4.0;
+  result.centroid_y = cy / 4.0;
+
+  double area = 0.0;
+  for (size_t i = 0; i < c.size(); ++i)
+  {
+    size_t j = (i + 1) % c.size();
+    area += c[i].x * c[j].y;
+    area -= c[j].x * c[i].y;
+  }
+  result.area = std::abs(area) / 2.0;
+
+  result.found = true;
+  result.detected_dict_id = dict_id;
+  result.detected_marker_id = ids[static_cast<size_t>(target_idx)];
+  return true;
 }
 
 ArucoDetection detectArucoFlag(const cv::Mat& bgr, const ArucoDetectorConfig& cfg)
 {
   ArucoDetection result;
 
-  // 1. Intentar con el diccionario configurado
-  if (tryDetect(bgr, cfg.dictionary_id, cfg.marker_id, result))
+  // Preparar dos versiones: original y con sharpening
+  cv::Mat sharpened;
+  cv::GaussianBlur(bgr, sharpened, cv::Size(0, 0), 2.0);
+  cv::addWeighted(bgr, 1.5, sharpened, -0.5, 0, sharpened);
+
+  const cv::Mat* images[] = { &bgr, &sharpened };
+  const char* img_names[] = { "original", "sharpened" };
+
+  // ── Fase 1: buscar el marker_id configurado en todos los diccionarios ──
+  for (int img_idx = 0; img_idx < 2; ++img_idx)
   {
-    return result;
+    for (int dict = 0; dict <= 20; ++dict)
+    {
+      if (tryDetect(*images[img_idx], dict, cfg.marker_id, result))
+      {
+        if (dict != cfg.dictionary_id)
+        {
+          fprintf(stderr,
+                  "[ArUco] id=%d found with dict %s (%s image). "
+                  "Set aruco_dictionary: %d in vision_real.yaml\n",
+                  cfg.marker_id, dictName(dict), img_names[img_idx], dict);
+        }
+        return result;
+      }
+    }
   }
 
-  // 2. Si no se encontró, probar TODOS los diccionarios (auto-detect)
-  //    Esto permite que funcione sin importar qué generador usó el usuario.
-  for (int dict = 0; dict <= 16; ++dict)
+  // ── Fase 2: buscar CUALQUIER marcador para debug ──
+  // Solo logear cada 3 segundos para no saturar
+  static int scan_count = 0;
+  if (++scan_count % 30 == 1)  // cada ~3s a 10fps
   {
-    if (dict == cfg.dictionary_id)
+    std::string found_summary;
+    for (int dict = 0; dict <= 20; ++dict)
     {
-      continue;  // Ya lo probamos arriba
+      std::vector<int> found_ids;
+      ArucoDetection dummy;
+      tryDetect(bgr, dict, -1, dummy, &found_ids);
+      if (!found_ids.empty())
+      {
+        found_summary += dictName(dict);
+        found_summary += ":[";
+        for (size_t i = 0; i < found_ids.size(); ++i)
+        {
+          if (i > 0) found_summary += ",";
+          found_summary += std::to_string(found_ids[i]);
+        }
+        found_summary += "] ";
+      }
     }
-    if (tryDetect(bgr, dict, cfg.marker_id, result))
+    if (!found_summary.empty())
     {
-      // Log a stderr para que el usuario vea qué diccionario funciona
       fprintf(stderr,
-              "[ArUco] Marker id=%d found with dictionary %s (id=%d). "
-              "Set aruco_dictionary: %d in vision_real.yaml for faster detection.\n",
-              cfg.marker_id, dictName(dict), dict, dict);
-      return result;
+              "[ArUco] Target id=%d NOT found, but OTHER markers detected: %s\n",
+              cfg.marker_id, found_summary.c_str());
+    }
+    else
+    {
+      fprintf(stderr,
+              "[ArUco] NO markers detected at all in any dictionary (image %dx%d). "
+              "Check lighting, camera focus, and marker print quality.\n",
+              bgr.cols, bgr.rows);
     }
   }
 

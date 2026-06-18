@@ -18,8 +18,8 @@ max_image_age: 0
 # ─── ArUco ──────────────────────────────────────────────────────────────
 # Usar detección ArUco en vez de HSV color.
 use_aruco: true
-aruco_marker_id: 0         # ID del marcador (el tuyo es 0)
-aruco_dictionary: 0        # 0 = DICT_4X4_50
+aruco_marker_id: 3         # El usuario tiene AprilTag ID=3
+aruco_dictionary: 20       # 20 = DICT_APRILTAG_36h11
 
 # ─── HSV (solo si use_aruco: false) ─────────────────────────────────────
 h_low1: 0

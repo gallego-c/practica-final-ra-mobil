@@ -22,6 +22,7 @@ struct ArucoDetection
   double centroid_y = -1.0;  // fila del centroide (px)
   double area = 0.0;         // área del marcador (px²)
   int detected_dict_id = -1; // diccionario que lo detectó
+  int detected_marker_id = -1; // ID real del marcador detectado
   std::vector<cv::Point2f> corners;  // 4 esquinas (para debug)
 };
 
