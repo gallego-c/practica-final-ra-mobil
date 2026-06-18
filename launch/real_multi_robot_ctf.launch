@@ -5,13 +5,23 @@
   <arg name="merged_map_topic" default="/merged_map"/>
   <arg name="rviz" default="true"/>
 
-  <!-- Robots reales: 3.00 m entre ellos, bandera en el centro del mapa -->
+  <!-- Robots reales: ±1.5 m del centro (3 m entre ellos), mismo yaw (+X) -->
   <arg name="robot1_x" default="-1.50"/>
   <arg name="robot1_y" default="0.0"/>
   <arg name="robot1_yaw" default="0.0"/>
   <arg name="robot2_x" default="1.50"/>
   <arg name="robot2_y" default="0.0"/>
   <arg name="robot2_yaw" default="0.0"/>
+
+  <!-- map_merge lee init_pose al descubrir /robotN/map — poner ANTES de shared_slam -->
+  <param name="/robot1/map_merge/init_pose_x" value="$(arg robot1_x)"/>
+  <param name="/robot1/map_merge/init_pose_y" value="$(arg robot1_y)"/>
+  <param name="/robot1/map_merge/init_pose_z" value="0.0"/>
+  <param name="/robot1/map_merge/init_pose_yaw" value="$(arg robot1_yaw)"/>
+  <param name="/robot2/map_merge/init_pose_x" value="$(arg robot2_x)"/>
+  <param name="/robot2/map_merge/init_pose_y" value="$(arg robot2_y)"/>
+  <param name="/robot2/map_merge/init_pose_z" value="0.0"/>
+  <param name="/robot2/map_merge/init_pose_yaw" value="$(arg robot2_yaw)"/>
   <arg name="flag_x" default="0.0"/>
   <arg name="flag_y" default="0.0"/>
 
@@ -45,7 +55,15 @@
   <include file="$(find ctf_navigation)/launch/real_robot_tf.launch">
     <arg name="lidar_yaw" value="$(arg lidar_yaw)"/>
     <arg name="publish_kinematic_tf" value="$(arg publish_kinematic_tf)"/>
+    <arg name="publish_odom_tf" value="true"/>
   </include>
+
+  <node pkg="ctf_navigation" type="map_merge_debug.py" name="map_merge_debug"
+        output="screen">
+    <param name="world_frame" value="$(arg world_frame)"/>
+    <param name="merged_map_topic" value="$(arg merged_map_topic)"/>
+    <rosparam param="robots">[robot1, robot2]</rosparam>
+  </node>
 
   <!-- 1. Shared SLAM (GMapping for both robots & map_merge) -->
   <include file="$(find ctf_navigation)/launch/shared_slam.launch">
