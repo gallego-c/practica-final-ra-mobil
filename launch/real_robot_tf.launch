@@ -16,7 +16,7 @@
   -->
   <arg name="robot1_ns" default="robot1"/>
   <arg name="robot2_ns" default="robot2"/>
-  <arg name="lidar_yaw" default="3.14159265359"/>
+  <arg name="lidar_yaw" default="0.0"/>
   <arg name="publish_kinematic_tf" default="true"/>
   <arg name="publish_odom_tf" default="true"/>
 

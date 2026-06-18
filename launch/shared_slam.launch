@@ -18,7 +18,7 @@
   <arg name="robot2_spawn_x" default="1.50"/>
   <arg name="robot2_spawn_y" default="0.0"/>
   <arg name="robot2_spawn_yaw" default="3.1416"/>
-  <arg name="lidar_yaw" default="3.1416"/> <!-- 180 previously pi -->
+  <arg name="lidar_yaw" default="0.0"/>
 
   <!-- Laser scan filters to remove the other robot's body from GMapping and move_base -->
   <group ns="robot1">

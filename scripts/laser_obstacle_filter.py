@@ -61,7 +61,7 @@ class LaserObstacleFilter:
         self.obstacle_frame = rospy.get_param('~obstacle_frame', '')
         self.robot_radius = float(rospy.get_param('~robot_radius', 0.32))
         self.use_odom_relative = bool(rospy.get_param('~use_odom_relative', True))
-        self.lidar_yaw = float(rospy.get_param('~lidar_yaw', math.pi))
+        self.lidar_yaw = float(rospy.get_param('~lidar_yaw', 0.0))
 
         ns = rospy.get_namespace().strip('/')
         self.self_ns = ns or 'robot1'
