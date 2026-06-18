@@ -16,7 +16,7 @@
   <arg name="flag_y" default="0.0"/>
 
   <!-- LiDAR LD08 físico montado 180° respecto al URDF stock (probar 0.0 si el mapa sale girado) -->
-  <arg name="lidar_yaw" default="3.14159265359"/>
+  <arg name="lidar_yaw" default="0.0"/>
   <!-- false si el bringup del robot ya publica base_footprint->base_link->base_scan -->
   <arg name="publish_kinematic_tf" default="true"/>
 
