@@ -20,7 +20,10 @@
   <!-- false si el bringup del robot ya publica base_footprint->base_link->base_scan -->
   <arg name="publish_kinematic_tf" default="true"/>
 
-  <!-- Spawns en map (deben coincidir con map_merge init_pose y slam_navigation static TF) -->
+  <!-- Spawns en map: los 3 sitios deben coincidir (físico, map_merge, TF estático):
+       rosparam get /robot1/map_merge/init_pose_x  → -1.5
+       rosrun tf tf_echo map robot1/map            → -1.5, 0, 0
+       Gazebo usa 0,0,0 en map_merge+TF; robots reales usan estas coords. -->
   <rosparam param="/ctf_navigation/spawns/robot1" subst_value="True">[$(arg robot1_x), $(arg robot1_y), $(arg robot1_yaw)]</rosparam>
   <rosparam param="/ctf_navigation/spawns/robot2" subst_value="True">[$(arg robot2_x), $(arg robot2_y), $(arg robot2_yaw)]</rosparam>
   <rosparam param="/ctf_navigation/spawns/flag" subst_value="True">[$(arg flag_x), $(arg flag_y)]</rosparam>

@@ -13,17 +13,20 @@
 
   <!-- Initial poses for multirobot_map_merge (world frame = map).
        MUST match slam_navigation static TF (map -> robotN/map) exactly.
-       REAL: robot1 (-1.5,0,0), robot2 (+1.5,0,pi) — same args as physical spawn.
-       GAZEBO: keep 0,0,0 for both; spawn offset lives in wheel odom, not here. -->
-  <param name="/robot1/map_merge/init_pose_x" value="$(arg robot1_init_x)"/>
-  <param name="/robot1/map_merge/init_pose_y" value="$(arg robot1_init_y)"/>
-  <param name="/robot1/map_merge/init_pose_z" value="0.0"/>
-  <param name="/robot1/map_merge/init_pose_yaw" value="$(arg robot1_init_yaw)"/>
-
-  <param name="/robot2/map_merge/init_pose_x" value="$(arg robot2_init_x)"/>
-  <param name="/robot2/map_merge/init_pose_y" value="$(arg robot2_init_y)"/>
-  <param name="/robot2/map_merge/init_pose_z" value="0.0"/>
-  <param name="/robot2/map_merge/init_pose_yaw" value="$(arg robot2_init_yaw)"/>
+       REAL: robot1 (-1.5,0,0), robot2 (+1.5,0,pi) — physical spawn.
+       GAZEBO: pass robotN_init_* = 0; spawn offset lives in wheel odom. -->
+  <group ns="robot1/map_merge">
+    <param name="init_pose_x" value="$(arg robot1_init_x)"/>
+    <param name="init_pose_y" value="$(arg robot1_init_y)"/>
+    <param name="init_pose_z" value="0.0"/>
+    <param name="init_pose_yaw" value="$(arg robot1_init_yaw)"/>
+  </group>
+  <group ns="robot2/map_merge">
+    <param name="init_pose_x" value="$(arg robot2_init_x)"/>
+    <param name="init_pose_y" value="$(arg robot2_init_y)"/>
+    <param name="init_pose_z" value="0.0"/>
+    <param name="init_pose_yaw" value="$(arg robot2_init_yaw)"/>
+  </group>
 
   <node pkg="multirobot_map_merge" type="map_merge"
         name="map_merge" output="screen">

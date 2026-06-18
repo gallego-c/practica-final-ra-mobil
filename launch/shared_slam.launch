@@ -4,12 +4,13 @@
   <arg name="world_frame" default="map"/>
   <arg name="merged_map_topic" default="/merged_map"/>
 
-  <arg name="robot1_init_x" default="0.0"/>
+  <!-- MUST match robotN_spawn_* on real robots; Gazebo launches override to 0,0,0 -->
+  <arg name="robot1_init_x" default="-1.50"/>
   <arg name="robot1_init_y" default="0.0"/>
   <arg name="robot1_init_yaw" default="0.0"/>
-  <arg name="robot2_init_x" default="0.0"/>
+  <arg name="robot2_init_x" default="1.50"/>
   <arg name="robot2_init_y" default="0.0"/>
-  <arg name="robot2_init_yaw" default="0.0"/>
+  <arg name="robot2_init_yaw" default="3.1416"/>
   <arg name="quiet_slam" default="true"/>
   <!-- ±1.5 m del centro, 3 m entre robots, cara a cara (yaw 0 / pi) -->
   <arg name="robot1_spawn_x" default="-1.50"/>
