@@ -42,8 +42,10 @@ struct FlagDetectorConfig
   std::string map_frame = "map";
   double horizontal_fov = 1.085595;
   double max_detection_distance = 5.0;
-  double range_window = 0.10;
+  double range_window = 0.25;
   double max_image_age = 1.0;  // 0 = disable stale-image check (for real robots with clock skew)
+  bool drop_delayed_frames = true;  // false en robot real (vision_real.yaml)
+  double flag_hold_sec = 0.0;  // >0: mantener flag_found tras última detección (robot real)
   bool publish_debug = true;
   ctf_navigation::vision::ArucoDetectorConfig aruco;
 };
@@ -87,6 +89,9 @@ public:
              cfg_.compressed_camera_topic.empty() ? "(disabled)" : robot_nh.resolveName(cfg_.compressed_camera_topic).c_str(),
              robot_nh.resolveName(cfg_.scan_topic).c_str(),
              cfg_.base_frame.c_str());
+    ROS_INFO("flag_detector: AprilTag/ArUco marker_id=%d dictionary=%d (%s)",
+             cfg_.aruco.marker_id, cfg_.aruco.dictionary_id,
+             ctf_navigation::vision::arucoDictName(cfg_.aruco.dictionary_id));
   }
 
   bool hasReceivedImages() const { return images_received_; }
@@ -107,7 +112,7 @@ private:
   {
     images_received_ = true;
 
-    if (isFrameTooOld(msg->header.stamp))
+    if (cfg_.drop_delayed_frames && isFrameTooOld(msg->header.stamp))
     {
       ROS_WARN_THROTTLE(2.0, "Dropping delayed raw image frame to maintain real-time flow");
       return;
@@ -161,7 +166,7 @@ private:
   {
     images_received_ = true;
 
-    if (isFrameTooOld(msg->header.stamp))
+    if (cfg_.drop_delayed_frames && isFrameTooOld(msg->header.stamp))
     {
       ROS_WARN_THROTTLE(2.0, "Dropping delayed compressed image frame to maintain real-time flow");
       return;
@@ -193,23 +198,55 @@ private:
     }
 
     // ── Detección ArUco/AprilTag ──
-    ctf_navigation::vision::ArucoDetection aruco_det = ctf_navigation::vision::detectArucoFlag(bgr, cfg_.aruco);
-    
-    bool found = aruco_det.found;
-    double centroid_x = aruco_det.centroid_x;
-    double area = aruco_det.area;
+    ctf_navigation::vision::ArucoDetection aruco_det =
+        ctf_navigation::vision::detectArucoFlag(bgr, cfg_.aruco);
 
-    if (found)
+    const bool detected_now = aruco_det.found;
+    if (detected_now)
     {
-      ROS_INFO_THROTTLE(5.0, "ArUco: id=%d detected (dict=%s, area=%.0f)",
+      last_good_det_ = aruco_det;
+      last_good_time_ = ros::Time::now();
+      have_last_good_ = true;
+    }
+
+    bool found = detected_now;
+    if (!found && have_last_good_ && cfg_.flag_hold_sec > 0.0)
+    {
+      const double since_good = (ros::Time::now() - last_good_time_).toSec();
+      if (since_good <= cfg_.flag_hold_sec)
+      {
+        found = true;
+        aruco_det = last_good_det_;
+      }
+      else
+      {
+        have_last_good_ = false;
+      }
+    }
+
+    const double centroid_x = aruco_det.centroid_x;
+    const double area = aruco_det.area;
+
+    if (detected_now)
+    {
+      ROS_INFO_THROTTLE(2.0, "ArUco: id=%d detected (dict=%s, area=%.0f)",
                         cfg_.aruco.marker_id,
                         ctf_navigation::vision::arucoDictName(aruco_det.detected_dict_id),
                         area);
     }
-    else
+    else if (!found)
     {
-      ROS_WARN_THROTTLE(5.0, "ArUco: marker id=%d NOT found in any dictionary (image %dx%d)",
-                        cfg_.aruco.marker_id, bgr.cols, bgr.rows);
+      if (!aruco_det.debug_note.empty())
+      {
+        ROS_WARN_THROTTLE(5.0, "ArUco: marker id=%d NOT found (%dx%d) — %s",
+                          cfg_.aruco.marker_id, bgr.cols, bgr.rows,
+                          aruco_det.debug_note.c_str());
+      }
+      else
+      {
+        ROS_WARN_THROTTLE(5.0, "ArUco: marker id=%d NOT found in any dictionary (image %dx%d)",
+                          cfg_.aruco.marker_id, bgr.cols, bgr.rows);
+      }
     }
 
     std_msgs::Bool found_msg;
@@ -386,6 +423,9 @@ private:
   bool images_received_ = false;
   double estimated_offset_ = 0.0;
   bool offset_initialized_ = false;
+  bool have_last_good_ = false;
+  ros::Time last_good_time_;
+  ctf_navigation::vision::ArucoDetection last_good_det_;
 
   ros::Subscriber scan_sub_;
   ros::Subscriber image_sub_;
@@ -410,6 +450,12 @@ FlagDetectorConfig loadConfig(ros::NodeHandle& pnh)
             cfg.max_detection_distance);
   pnh.param("range_window", cfg.range_window, cfg.range_window);
   pnh.param("max_image_age", cfg.max_image_age, cfg.max_image_age);
+  pnh.param("drop_delayed_frames", cfg.drop_delayed_frames, cfg.drop_delayed_frames);
+  pnh.param("flag_hold_sec", cfg.flag_hold_sec, cfg.flag_hold_sec);
+  if (cfg.max_image_age <= 0.0)
+  {
+    cfg.drop_delayed_frames = false;
+  }
   pnh.param("publish_debug", cfg.publish_debug, cfg.publish_debug);
 
   // ArUco / AprilTag

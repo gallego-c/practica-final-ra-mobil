@@ -2,6 +2,7 @@
 #define CTF_NAVIGATION_VISION_ARUCO_FLAG_DETECTOR_HPP
 
 #include <opencv2/core.hpp>
+#include <string>
 #include <vector>
 
 namespace ctf_navigation
@@ -24,6 +25,7 @@ struct ArucoDetection
   int detected_dict_id = -1; // diccionario que lo detectó
   int detected_marker_id = -1; // ID real del marcador detectado
   std::vector<cv::Point2f> corners;  // 4 esquinas (para debug)
+  std::string debug_note;    // diagnóstico si !found
 };
 
 /// Detecta un marcador ArUco específico en la imagen BGR.

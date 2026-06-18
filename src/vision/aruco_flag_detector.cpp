@@ -136,18 +136,34 @@ ArucoDetection detectArucoFlag(const cv::Mat& bgr, const ArucoDetectorConfig& cf
 {
   ArucoDetection result;
 
-  // Preparar dos versiones: original y con sharpening
   cv::Mat sharpened;
   cv::GaussianBlur(bgr, sharpened, cv::Size(0, 0), 2.0);
   cv::addWeighted(bgr, 1.5, sharpened, -0.5, 0, sharpened);
 
-  const cv::Mat* images[] = { &bgr, &sharpened };
-  const char* img_names[] = { "original", "sharpened" };
+  cv::Mat gray;
+  cv::cvtColor(bgr, gray, cv::COLOR_BGR2GRAY);
 
-  // ── Fase 1: buscar el marker_id configurado en todos los diccionarios ──
-  for (int img_idx = 0; img_idx < 2; ++img_idx)
+  const cv::Mat* images[] = { &bgr, &sharpened, &gray };
+  const char* img_names[] = { "original", "sharpened", "gray" };
+
+  // Probar primero el diccionario configurado, luego el resto (como antes del merge).
+  std::vector<int> dict_order;
+  dict_order.reserve(21);
+  if (cfg.dictionary_id >= 0 && cfg.dictionary_id <= 20)
   {
-    for (int dict = 0; dict <= 20; ++dict)
+    dict_order.push_back(cfg.dictionary_id);
+  }
+  for (int dict = 0; dict <= 20; ++dict)
+  {
+    if (dict != cfg.dictionary_id)
+    {
+      dict_order.push_back(dict);
+    }
+  }
+
+  for (int img_idx = 0; img_idx < 3; ++img_idx)
+  {
+    for (int dict : dict_order)
     {
       if (tryDetect(*images[img_idx], dict, cfg.marker_id, result))
       {
@@ -163,10 +179,8 @@ ArucoDetection detectArucoFlag(const cv::Mat& bgr, const ArucoDetectorConfig& cf
     }
   }
 
-  // ── Fase 2: buscar CUALQUIER marcador para debug ──
-  // Solo logear cada 3 segundos para no saturar
   static int scan_count = 0;
-  if (++scan_count % 30 == 1)  // cada ~3s a 10fps
+  if (++scan_count % 30 == 1)
   {
     std::string found_summary;
     for (int dict = 0; dict <= 20; ++dict)
@@ -180,7 +194,10 @@ ArucoDetection detectArucoFlag(const cv::Mat& bgr, const ArucoDetectorConfig& cf
         found_summary += ":[";
         for (size_t i = 0; i < found_ids.size(); ++i)
         {
-          if (i > 0) found_summary += ",";
+          if (i > 0)
+          {
+            found_summary += ",";
+          }
           found_summary += std::to_string(found_ids[i]);
         }
         found_summary += "] ";
@@ -188,12 +205,16 @@ ArucoDetection detectArucoFlag(const cv::Mat& bgr, const ArucoDetectorConfig& cf
     }
     if (!found_summary.empty())
     {
-      fprintf(stderr,
-              "[ArUco] Target id=%d NOT found, but OTHER markers detected: %s\n",
+      result.debug_note =
+          "other markers: " + found_summary + "(target id=" +
+          std::to_string(cfg.marker_id) + " not in frame)";
+      fprintf(stderr, "[ArUco] Target id=%d NOT found, but OTHER markers detected: %s\n",
               cfg.marker_id, found_summary.c_str());
     }
     else
     {
+      result.debug_note = "no markers visible — point camera at AprilTag 36h11 id=" +
+                          std::to_string(cfg.marker_id);
       fprintf(stderr,
               "[ArUco] NO markers detected at all in any dictionary (image %dx%d). "
               "Check lighting, camera focus, and marker print quality.\n",
