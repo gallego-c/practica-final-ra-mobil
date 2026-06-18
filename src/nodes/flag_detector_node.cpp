@@ -1,6 +1,6 @@
 /**
  * @file flag_detector_node.cpp
- * @brief Detección de la bandera por cámara (ArUco o HSV rojo) + posición con LIDAR y TF.
+ * @brief Detección de la bandera por cámara (ArUco/AprilTag) + posición con LIDAR y TF.
  *
  * Publica (en el namespace del robot):
  *   ~/flag_found    (std_msgs/Bool)
@@ -288,7 +288,7 @@ private:
     return pose_map;
   }
 
-  boost::optional<geometry_msgs::PoseStamped> estimateFlagPose(double bearing, const ros::Time& stamp)
+  void publishDebugAruco(const cv::Mat& frame,
                          const ctf_navigation::vision::ArucoDetection& det,
                          const boost::optional<geometry_msgs::PoseStamped>& estimate,
                          const ros::Time& stamp)

@@ -33,6 +33,13 @@ ArucoDetection detectArucoFlag(const cv::Mat& bgr, const ArucoDetectorConfig& cf
 /// Nombre legible del diccionario ArUco (para logging).
 const char* arucoDictName(int id);
 
+/// Bearing horizontal (rad): positivo = izquierda del centro de la imagen.
+inline double bearingFromCentroid(double centroid_x, int image_width, double horizontal_fov)
+{
+  return (0.5 * static_cast<double>(image_width) - centroid_x) /
+         static_cast<double>(image_width) * horizontal_fov;
+}
+
 }  // namespace vision
 }  // namespace ctf_navigation
 

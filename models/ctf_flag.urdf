@@ -10,8 +10,8 @@
       flag_detector puede estimar su posición (rango + bearing).
     * Disco rojo en el suelo (sólo visual) para marcar la zona.
     * <gazebo><static>true</static></gazebo> → no se cae ni se mueve.
-    * Material Gazebo/Red para que se renderice rojo saturado en Gazebo
-      (la detección HSV depende de esto).
+    * Material Gazebo/Red para visualización en simulación.
+      La detección usa un marcador ArUco/AprilTag (ver params/vision.yaml).
 -->
 <robot name="ctf_flag">
   <link name="base_link">
