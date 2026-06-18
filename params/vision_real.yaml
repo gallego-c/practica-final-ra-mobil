@@ -15,21 +15,8 @@ range_window: 0.25
 # Desactivar comprobación de imagen obsoleta (0 = desactivado).
 max_image_age: 0
 
-# ─── ArUco ──────────────────────────────────────────────────────────────
-# Usar detección ArUco en vez de HSV color.
-use_aruco: true
+# ─── ArUco / AprilTag ───────────────────────────────────────────────────
 aruco_marker_id: 3         # El usuario tiene AprilTag ID=3
 aruco_dictionary: 20       # 20 = DICT_APRILTAG_36h11
-
-# ─── HSV (solo si use_aruco: false) ─────────────────────────────────────
-h_low1: 0
-h_high1: 8
-h_low2: 172
-h_high2: 180
-s_min: 150
-v_min: 80
-min_blob_area: 500
-max_blob_area: 8000
-use_rgb_fallback: false
 
 publish_debug: true

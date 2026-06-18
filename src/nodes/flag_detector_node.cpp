@@ -29,7 +29,6 @@
 #include "ctf_navigation/common/tf_helper.hpp"
 #include "ctf_navigation/vision/aruco_flag_detector.hpp"
 #include "ctf_navigation/vision/laser_utils.hpp"
-#include "ctf_navigation/vision/red_flag_detector.hpp"
 
 namespace
 {
@@ -46,9 +45,7 @@ struct FlagDetectorConfig
   double range_window = 0.10;
   double max_image_age = 1.0;  // 0 = disable stale-image check (for real robots with clock skew)
   bool publish_debug = true;
-  bool use_aruco = false;
   ctf_navigation::vision::ArucoDetectorConfig aruco;
-  ctf_navigation::vision::RedDetectorConfig red;
 };
 
 class FlagDetectorNode
@@ -195,39 +192,24 @@ private:
       }
     }
 
-    bool found = false;
-    double centroid_x = -1.0;
-    double area = 0.0;
+    // ── Detección ArUco/AprilTag ──
+    ctf_navigation::vision::ArucoDetection aruco_det = ctf_navigation::vision::detectArucoFlag(bgr, cfg_.aruco);
+    
+    bool found = aruco_det.found;
+    double centroid_x = aruco_det.centroid_x;
+    double area = aruco_det.area;
 
-    // ── Detección ArUco o HSV ──
-    ctf_navigation::vision::ArucoDetection aruco_det;
-    ctf_navigation::vision::RedDetection red_det;
-
-    if (cfg_.use_aruco)
+    if (found)
     {
-      aruco_det = ctf_navigation::vision::detectArucoFlag(bgr, cfg_.aruco);
-      found = aruco_det.found;
-      centroid_x = aruco_det.centroid_x;
-      area = aruco_det.area;
-      if (found)
-      {
-        ROS_INFO_THROTTLE(5.0, "ArUco: id=%d detected (dict=%s, area=%.0f)",
-                          cfg_.aruco.marker_id,
-                          ctf_navigation::vision::arucoDictName(aruco_det.detected_dict_id),
-                          area);
-      }
-      else
-      {
-        ROS_WARN_THROTTLE(5.0, "ArUco: marker id=%d NOT found in any dictionary (image %dx%d)",
-                          cfg_.aruco.marker_id, bgr.cols, bgr.rows);
-      }
+      ROS_INFO_THROTTLE(5.0, "ArUco: id=%d detected (dict=%s, area=%.0f)",
+                        cfg_.aruco.marker_id,
+                        ctf_navigation::vision::arucoDictName(aruco_det.detected_dict_id),
+                        area);
     }
     else
     {
-      red_det = ctf_navigation::vision::detectRedBlob(bgr, cfg_.red);
-      found = red_det.found;
-      centroid_x = red_det.centroid_x;
-      area = red_det.area;
+      ROS_WARN_THROTTLE(5.0, "ArUco: marker id=%d NOT found in any dictionary (image %dx%d)",
+                        cfg_.aruco.marker_id, bgr.cols, bgr.rows);
     }
 
     std_msgs::Bool found_msg;
@@ -255,14 +237,7 @@ private:
 
     if (cfg_.publish_debug)
     {
-      if (cfg_.use_aruco)
-      {
-        publishDebugAruco(bgr, aruco_det, estimate, stamp);
-      }
-      else
-      {
-        publishDebug(bgr, red_det, estimate, stamp);
-      }
+      publishDebugAruco(bgr, aruco_det, estimate, stamp);
     }
   }
 
@@ -313,67 +288,7 @@ private:
     return pose_map;
   }
 
-  void publishDebug(const cv::Mat& frame,
-                    const ctf_navigation::vision::RedDetection& det,
-                    const boost::optional<geometry_msgs::PoseStamped>& estimate,
-                    const ros::Time& stamp)
-  {
-    cv::Mat dbg = frame.clone();
-    if (!det.mask.empty())
-    {
-      dbg.setTo(cv::Scalar(0, 255, 0), det.mask);
-    }
-    if (det.found && det.centroid_x >= 0)
-    {
-      const int cx = static_cast<int>(det.centroid_x);
-      cv::line(dbg, cv::Point(cx, 0), cv::Point(cx, dbg.rows), cv::Scalar(255, 0, 0), 2);
-      char buf[128];
-      if (estimate)
-      {
-        snprintf(buf, sizeof(buf), "FLAG area=%d @ (%.2f, %.2f)",
-                 static_cast<int>(det.area), estimate->pose.position.x,
-                 estimate->pose.position.y);
-      }
-      else
-      {
-        snprintf(buf, sizeof(buf), "FLAG area=%d", static_cast<int>(det.area));
-      }
-      const std::string text(buf);
-      cv::putText(dbg, text, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7,
-                  cv::Scalar(0, 255, 255), 2);
-    }
-    else
-    {
-      char buf[96];
-      snprintf(buf, sizeof(buf), "red area=%d min=%d", static_cast<int>(det.area),
-               cfg_.red.min_blob_area);
-      cv::putText(dbg, buf, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7,
-                  cv::Scalar(0, 255, 255), 2);
-    }
-    try
-    {
-      std_msgs::Header header;
-      header.stamp = stamp;
-      header.frame_id = cfg_.base_frame;
-
-      const auto out = cv_bridge::CvImage(header, "bgr8", dbg).toImageMsg();
-      debug_pub_.publish(out);
-
-      // Publish compressed debug image as well
-      sensor_msgs::CompressedImage compressed_out;
-      compressed_out.header = header;
-      compressed_out.format = "jpeg";
-      if (cv::imencode(".jpg", dbg, compressed_out.data))
-      {
-        debug_compressed_pub_.publish(compressed_out);
-      }
-    }
-    catch (const cv_bridge::Exception&)
-    {
-    }
-  }
-
-  void publishDebugAruco(const cv::Mat& frame,
+  boost::optional<geometry_msgs::PoseStamped> estimateFlagPose(double bearing, const ros::Time& stamp)
                          const ctf_navigation::vision::ArucoDetection& det,
                          const boost::optional<geometry_msgs::PoseStamped>& estimate,
                          const ros::Time& stamp)
@@ -497,29 +412,10 @@ FlagDetectorConfig loadConfig(ros::NodeHandle& pnh)
   pnh.param("max_image_age", cfg.max_image_age, cfg.max_image_age);
   pnh.param("publish_debug", cfg.publish_debug, cfg.publish_debug);
 
-  // ArUco
-  pnh.param("use_aruco", cfg.use_aruco, cfg.use_aruco);
+  // ArUco / AprilTag
   pnh.param("aruco_marker_id", cfg.aruco.marker_id, cfg.aruco.marker_id);
   pnh.param("aruco_dictionary", cfg.aruco.dictionary_id, cfg.aruco.dictionary_id);
 
-  // HSV (solo si use_aruco=false)
-  pnh.param("min_blob_area", cfg.red.min_blob_area, cfg.red.min_blob_area);
-  pnh.param("max_blob_area", cfg.red.max_blob_area, cfg.red.max_blob_area);
-  pnh.param("h_low1", cfg.red.h_low1, cfg.red.h_low1);
-  pnh.param("h_high1", cfg.red.h_high1, cfg.red.h_high1);
-  pnh.param("h_low2", cfg.red.h_low2, cfg.red.h_low2);
-  pnh.param("h_high2", cfg.red.h_high2, cfg.red.h_high2);
-  pnh.param("s_min", cfg.red.s_min, cfg.red.s_min);
-  pnh.param("v_min", cfg.red.v_min, cfg.red.v_min);
-  pnh.param("use_rgb_fallback", cfg.red.use_rgb_fallback,
-            cfg.red.use_rgb_fallback);
-  pnh.param("rgb_red_min", cfg.red.rgb_red_min, cfg.red.rgb_red_min);
-  pnh.param("rgb_red_dominance", cfg.red.rgb_red_dominance,
-            cfg.red.rgb_red_dominance);
-  pnh.param("min_aspect_ratio", cfg.red.min_aspect_ratio,
-            cfg.red.min_aspect_ratio);
-  pnh.param("max_aspect_ratio", cfg.red.max_aspect_ratio,
-            cfg.red.max_aspect_ratio);
   return cfg;
 }
 
