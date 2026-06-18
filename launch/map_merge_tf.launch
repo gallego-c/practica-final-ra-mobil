@@ -1,0 +1,12 @@
+<launch>
+  <arg name="world_frame" default="map"/>
+  <arg name="merged_map_topic" default="/merged_map"/>
+
+  <!-- Uses TF map->robotN/map instead of rosparam init_pose (robots reales). -->
+  <node pkg="ctf_navigation" type="tf_map_merge.py" name="tf_map_merge" output="screen">
+    <param name="world_frame" value="$(arg world_frame)"/>
+    <param name="merged_map_topic" value="$(arg merged_map_topic)"/>
+    <param name="rate" value="0.5"/>
+    <rosparam param="robot_map_topics">[/robot1/map, /robot2/map]</rosparam>
+  </node>
+</launch>

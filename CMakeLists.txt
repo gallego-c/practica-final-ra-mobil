@@ -96,6 +96,8 @@ catkin_install_python(PROGRAMS
   scripts/clock_drift_check.py
   scripts/odom_tf_broadcaster.py
   scripts/map_merge_debug.py
+  scripts/tf_map_merge.py
+  scripts/launch_config_echo.py
   scripts/laser_obstacle_filter.py
   scripts/robot_coordinator.py
   scripts/robot_obstacle_publisher.py
