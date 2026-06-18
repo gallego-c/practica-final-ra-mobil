@@ -209,6 +209,18 @@ private:
       found = aruco_det.found;
       centroid_x = aruco_det.centroid_x;
       area = aruco_det.area;
+      if (found)
+      {
+        ROS_INFO_THROTTLE(5.0, "ArUco: id=%d detected (dict=%s, area=%.0f)",
+                          cfg_.aruco.marker_id,
+                          ctf_navigation::vision::arucoDictName(aruco_det.detected_dict_id),
+                          area);
+      }
+      else
+      {
+        ROS_WARN_THROTTLE(5.0, "ArUco: marker id=%d NOT found in any dictionary (image %dx%d)",
+                          cfg_.aruco.marker_id, bgr.cols, bgr.rows);
+      }
     }
     else
     {
