@@ -1,6 +1,6 @@
 /**
  * @file flag_detector_node.cpp
- * @brief Detección de la bandera por cámara (HSV rojo) + posición con LIDAR y TF.
+ * @brief Detección de la bandera por cámara (ArUco o HSV rojo) + posición con LIDAR y TF.
  *
  * Publica (en el namespace del robot):
  *   ~/flag_found    (std_msgs/Bool)
@@ -13,6 +13,7 @@
 
 #include <cv_bridge/cv_bridge.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <opencv2/aruco.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <ros/ros.h>
@@ -26,6 +27,7 @@
 
 #include "ctf_navigation/common/geometry.hpp"
 #include "ctf_navigation/common/tf_helper.hpp"
+#include "ctf_navigation/vision/aruco_flag_detector.hpp"
 #include "ctf_navigation/vision/laser_utils.hpp"
 #include "ctf_navigation/vision/red_flag_detector.hpp"
 
@@ -44,6 +46,8 @@ struct FlagDetectorConfig
   double range_window = 0.10;
   double max_image_age = 1.0;  // 0 = disable stale-image check (for real robots with clock skew)
   bool publish_debug = true;
+  bool use_aruco = false;
+  ctf_navigation::vision::ArucoDetectorConfig aruco;
   ctf_navigation::vision::RedDetectorConfig red;
 };
 
@@ -191,19 +195,40 @@ private:
       }
     }
 
-    const auto det = ctf_navigation::vision::detectRedBlob(bgr, cfg_.red);
+    bool found = false;
+    double centroid_x = -1.0;
+    double area = 0.0;
+
+    // ── Detección ArUco o HSV ──
+    ctf_navigation::vision::ArucoDetection aruco_det;
+    ctf_navigation::vision::RedDetection red_det;
+
+    if (cfg_.use_aruco)
+    {
+      aruco_det = ctf_navigation::vision::detectArucoFlag(bgr, cfg_.aruco);
+      found = aruco_det.found;
+      centroid_x = aruco_det.centroid_x;
+      area = aruco_det.area;
+    }
+    else
+    {
+      red_det = ctf_navigation::vision::detectRedBlob(bgr, cfg_.red);
+      found = red_det.found;
+      centroid_x = red_det.centroid_x;
+      area = red_det.area;
+    }
 
     std_msgs::Bool found_msg;
-    found_msg.data = det.found;
+    found_msg.data = found;
     found_pub_.publish(found_msg);
 
     boost::optional<geometry_msgs::PoseStamped> estimate;
-    if (det.found)
+    if (found)
     {
       const double bearing = ctf_navigation::vision::bearingFromCentroid(
-          det.centroid_x, bgr.cols, cfg_.horizontal_fov);
-      ROS_DEBUG_THROTTLE(1.0, "Red flag candidate: area=%.0f cx=%.0f bearing=%.2f rad",
-                        det.area, det.centroid_x, bearing);
+          centroid_x, bgr.cols, cfg_.horizontal_fov);
+      ROS_DEBUG_THROTTLE(1.0, "Flag candidate: area=%.0f cx=%.0f bearing=%.2f rad",
+                        area, centroid_x, bearing);
       estimate = estimateFlagPose(bearing, stamp);
       if (estimate)
       {
@@ -212,14 +237,20 @@ private:
       else
       {
         ROS_WARN_THROTTLE(3.0,
-                          "Red blob seen (area=%.0f) but no LIDAR/TF estimate",
-                          det.area);
+                          "Flag seen (area=%.0f) but no LIDAR/TF estimate", area);
       }
     }
 
     if (cfg_.publish_debug)
     {
-      publishDebug(bgr, det, estimate, stamp);
+      if (cfg_.use_aruco)
+      {
+        publishDebugAruco(bgr, aruco_det, estimate, stamp);
+      }
+      else
+      {
+        publishDebug(bgr, red_det, estimate, stamp);
+      }
     }
   }
 
@@ -330,6 +361,63 @@ private:
     }
   }
 
+  void publishDebugAruco(const cv::Mat& frame,
+                         const ctf_navigation::vision::ArucoDetection& det,
+                         const boost::optional<geometry_msgs::PoseStamped>& estimate,
+                         const ros::Time& stamp)
+  {
+    cv::Mat dbg = frame.clone();
+    if (det.found && det.corners.size() == 4)
+    {
+      // Dibujar el contorno del marcador ArUco
+      for (size_t i = 0; i < 4; ++i)
+      {
+        cv::line(dbg, det.corners[i], det.corners[(i + 1) % 4],
+                 cv::Scalar(0, 255, 0), 2);
+      }
+      const int cx = static_cast<int>(det.centroid_x);
+      cv::circle(dbg, cv::Point(cx, static_cast<int>(det.centroid_y)), 6,
+                 cv::Scalar(255, 0, 0), -1);
+      char buf[128];
+      if (estimate)
+      {
+        snprintf(buf, sizeof(buf), "ARUCO id=%d @ (%.2f, %.2f)",
+                 cfg_.aruco.marker_id, estimate->pose.position.x,
+                 estimate->pose.position.y);
+      }
+      else
+      {
+        snprintf(buf, sizeof(buf), "ARUCO id=%d area=%.0f",
+                 cfg_.aruco.marker_id, det.area);
+      }
+      cv::putText(dbg, buf, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7,
+                  cv::Scalar(0, 255, 255), 2);
+    }
+    else
+    {
+      cv::putText(dbg, "ARUCO: no marker", cv::Point(10, 30),
+                  cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 255), 2);
+    }
+    try
+    {
+      std_msgs::Header header;
+      header.stamp = stamp;
+      header.frame_id = cfg_.base_frame;
+      const auto out = cv_bridge::CvImage(header, "bgr8", dbg).toImageMsg();
+      debug_pub_.publish(out);
+      sensor_msgs::CompressedImage compressed_out;
+      compressed_out.header = header;
+      compressed_out.format = "jpeg";
+      if (cv::imencode(".jpg", dbg, compressed_out.data))
+      {
+        debug_compressed_pub_.publish(compressed_out);
+      }
+    }
+    catch (const cv_bridge::Exception&)
+    {
+    }
+  }
+
   bool isFrameTooOld(const ros::Time& stamp)
   {
     if (stamp.isZero())
@@ -396,6 +484,13 @@ FlagDetectorConfig loadConfig(ros::NodeHandle& pnh)
   pnh.param("range_window", cfg.range_window, cfg.range_window);
   pnh.param("max_image_age", cfg.max_image_age, cfg.max_image_age);
   pnh.param("publish_debug", cfg.publish_debug, cfg.publish_debug);
+
+  // ArUco
+  pnh.param("use_aruco", cfg.use_aruco, cfg.use_aruco);
+  pnh.param("aruco_marker_id", cfg.aruco.marker_id, cfg.aruco.marker_id);
+  pnh.param("aruco_dictionary", cfg.aruco.dictionary_id, cfg.aruco.dictionary_id);
+
+  // HSV (solo si use_aruco=false)
   pnh.param("min_blob_area", cfg.red.min_blob_area, cfg.red.min_blob_area);
   pnh.param("max_blob_area", cfg.red.max_blob_area, cfg.red.max_blob_area);
   pnh.param("h_low1", cfg.red.h_low1, cfg.red.h_low1);
