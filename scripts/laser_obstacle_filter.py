@@ -29,7 +29,6 @@ class LaserObstacleFilter:
 
     def scan_cb(self, msg):
         try:
-            # Lookup transform from scan frame to the other robot's footprint
             tf = self.tf_buffer.lookup_transform(
                 msg.header.frame_id,
                 self.obstacle_frame,
@@ -40,44 +39,34 @@ class LaserObstacleFilter:
             ty = tf.transform.translation.y
 
             dist = math.hypot(tx, ty)
-            
-            # If the other robot is too far, don't filter anything
+
             if dist > 4.0:
                 self.pub.publish(msg)
                 return
 
             angle_to_obstacle = math.atan2(ty, tx)
 
-            # Calculate the angular width of the other robot's footprint
             if dist > self.robot_radius:
                 half_angle = math.asin(self.robot_radius / dist)
             else:
-                half_angle = math.pi  # Overlap, filter everything
+                half_angle = math.pi  # robot overlap: blank out full scan
 
-            # Create a mutable copy of ranges
             new_ranges = list(msg.ranges)
-            
             angle_min = msg.angle_min
             angle_inc = msg.angle_increment
             max_filter_dist = dist + self.robot_radius + 0.10
 
             for i in range(len(new_ranges)):
                 beam_angle = angle_min + i * angle_inc
-                
-                # Normalize angle difference to [-pi, pi]
-                diff = beam_angle - angle_to_obstacle
-                diff = (diff + math.pi) % (2.0 * math.pi) - math.pi
-
-                if abs(diff) <= half_angle:
-                    # Filter out scan returns that are close to or hit the other robot
-                    if new_ranges[i] <= max_filter_dist:
-                        new_ranges[i] = float('inf')
+                # normalize to [-pi, pi]
+                diff = (beam_angle - angle_to_obstacle + math.pi) % (2.0 * math.pi) - math.pi
+                if abs(diff) <= half_angle and new_ranges[i] <= max_filter_dist:
+                    new_ranges[i] = float('inf')
 
             msg.ranges = new_ranges
 
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
-            # If TF is not available yet, publish original scan for safety
-            pass
+            pass  # TF not ready yet; publish original scan
 
         self.pub.publish(msg)
 

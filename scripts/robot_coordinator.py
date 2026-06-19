@@ -12,7 +12,12 @@ from geometry_msgs.msg import Twist
 from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import Bool
 
-import ctf_scripts  # noqa: F401
+import os as _os, sys as _sys
+_d = _os.path.dirname(_os.path.abspath(__file__))
+if _d not in _sys.path:
+    _sys.path.insert(0, _d)
+del _os, _sys, _d
+
 from robot_cloud_utils import empty_cloud, make_footprint_cloud
 
 ROBOT_RADIUS = 0.28

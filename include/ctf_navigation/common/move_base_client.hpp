@@ -77,6 +77,6 @@ private:
   std::string robot_ns_;
 };
 
-}  // namespace ctf_navigation
+} 
 
 #endif

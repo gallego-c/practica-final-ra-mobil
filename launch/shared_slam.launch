@@ -36,7 +36,7 @@
   <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping"
         ns="robot1" output="$(eval 'log' if arg('quiet_slam') else 'screen')">
     <remap from="scan" to="/robot1/scan_filtered"/>
-    <rosparam file="$(find ctf_navigation)/params/gmapping_robot1.yaml"
+    <rosparam file="$(find ctf_navigation)/params/gmapping.yaml"
               command="load"/>
     <param name="base_frame" value="robot1/base_footprint"/>
     <param name="odom_frame" value="robot1/odom"/>
@@ -46,7 +46,7 @@
   <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping"
         ns="robot2" output="$(eval 'log' if arg('quiet_slam') else 'screen')">
     <remap from="scan" to="/robot2/scan_filtered"/>
-    <rosparam file="$(find ctf_navigation)/params/gmapping_robot2.yaml"
+    <rosparam file="$(find ctf_navigation)/params/gmapping.yaml"
               command="load"/>
     <param name="base_frame" value="robot2/base_footprint"/>
     <param name="odom_frame" value="robot2/odom"/>

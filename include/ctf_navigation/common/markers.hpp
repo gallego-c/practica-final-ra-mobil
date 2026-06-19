@@ -80,7 +80,7 @@ inline visualization_msgs::Marker makeSphere(const std::string& frame,
   return m;
 }
 
-}  // namespace markers
-}  // namespace ctf_navigation
+} 
+} 
 
 #endif

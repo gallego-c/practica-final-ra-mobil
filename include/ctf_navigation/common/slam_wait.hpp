@@ -99,7 +99,7 @@ inline bool waitForExplorationComplete(const std::string& topic, double timeout_
   return false;
 }
 
-}  // namespace slam_wait
-}  // namespace ctf_navigation
+}  
+}  
 
 #endif

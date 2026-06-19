@@ -8,7 +8,12 @@ import rospy
 import tf2_ros
 from actionlib_msgs.msg import GoalStatus
 
-import ctf_scripts  # noqa: F401
+import os as _os, sys as _sys
+_d = _os.path.dirname(_os.path.abspath(__file__))
+if _d not in _sys.path:
+    _sys.path.insert(0, _d)
+del _os, _sys, _d
+
 from frontier_map_utils import (
     FREE_THRESH,
     NEIGHBORS_4,
