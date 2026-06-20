@@ -791,16 +791,16 @@ class SlamFrontierExplorerCtf(FrontierExplorationMixin):
         rate = rospy.Rate(5.0)
         while rospy.Time.now() < deadline and not rospy.is_shutdown() and not self._stop.is_set():
             if self.game_state != 'EXPLORING':
-                client.cancel_goal()
+                client.cancel_all_goals()
                 return False
             has_own, _ = self._has_fresh_flag_estimate(ns)
             if has_own:
-                client.cancel_goal()
+                client.cancel_all_goals()
                 return False
             with self._state_lock:
                 mode = self._search_state.get(ns, 'EXPLORING')
             if mode in ('PURSUING_FLAG', 'APPROACHING_SHARED'):
-                client.cancel_goal()
+                client.cancel_all_goals()
                 return False
 
             state = client.get_state()
@@ -816,15 +816,14 @@ class SlamFrontierExplorerCtf(FrontierExplorationMixin):
                     last_progress = rospy.Time.now()
 
             # Enforce progress timeout even when close to resolve stuck situations/deadlocks
-
             if (rospy.Time.now() - last_progress).to_sec() > self.progress_timeout:
                 self._log_verbose_warn(
                     '%s Goal stalled: no progress for %.1f s', ns, self.progress_timeout)
-                client.cancel_goal()
+                client.cancel_all_goals()
                 return False
 
             rate.sleep()
-        client.cancel_goal()
+        client.cancel_all_goals()
         return False
 
     def _spin_to_scan(self, ns, duration=2.0):
