@@ -20,6 +20,7 @@ from geometry_msgs.msg import PoseStamped, Twist
 from move_base_msgs.msg import MoveBaseAction
 from nav_msgs.msg import OccupancyGrid
 from std_msgs.msg import Bool
+from std_srvs.srv import Empty
 from visualization_msgs.msg import Marker, MarkerArray
 
 import os as _os, sys as _sys
@@ -152,6 +153,7 @@ class SlamFrontierExplorerCtf(FrontierExplorationMixin):
         self._carrier_on_home_goal = False
         self._chase_started = 0.0
         self._clearance_goal = None
+        self._clearance_pre_sent = False
         self._has_intercept_goal = False
         self._intercept_anchor = None
         self._pursuer_was_succeeded = False
@@ -779,8 +781,7 @@ class SlamFrontierExplorerCtf(FrontierExplorationMixin):
             self._make_goal(wx, wy, yaw, ns=self.pursuer_ns))
 
     def _make_goal(self, wx, wy, yaw, ns=None):
-        frame_id = ns + '/map' if ns else self.map_frame
-        return self._make_move_base_goal(wx, wy, yaw, frame_id=frame_id)
+        return self._make_move_base_goal(wx, wy, yaw, frame_id=self.map_frame)
 
     def _wait_for_goal(self, ns, client, base_frame, goal_xy, timeout):
         deadline = rospy.Time.now() + rospy.Duration(timeout)
@@ -1193,20 +1194,6 @@ class SlamFrontierExplorerCtf(FrontierExplorationMixin):
     def _goal_succeeded(self, ns):
         return self._clients[ns].get_state() == GoalStatus.SUCCEEDED
 
-    def _make_chase_clearance_goal(self, carrier_pose, home):
-        cx, cy, _ = carrier_pose
-        hx, hy, hyaw = home
-        dx = hx - cx
-        dy = hy - cy
-        dist = math.hypot(dx, dy)
-        if dist < 1e-3:
-            return hx, hy, hyaw
-
-        step = min(self.chase_flag_clearance, max(0.0, dist - 0.10))
-        if step < self.chase_clearance_min_travel:
-            return hx, hy, hyaw
-
-        return cx + (dx / dist) * step, cy + (dy / dist) * step, math.atan2(dy, dx)
 
     def _make_interception_goal(self, carrier_pose, pursuer_pose, home):
         cx, cy, _ = carrier_pose
@@ -1286,94 +1273,115 @@ class SlamFrontierExplorerCtf(FrontierExplorationMixin):
         cpose = self._get_robot_pose(self.carrier_ns + '/base_footprint')
         if cpose is None:
             return
-        if self._carrier_on_home_goal:
-            resolved = self._resolve_chase_goal(
-                self.carrier_ns, cpose, (home[0], home[1]), allow_partial=True)
-            if resolved is None:
-                self._log_verbose_warn(
-                    'CTF CHASE: %s no safe plan to home yet', self.carrier_ns)
-                return
-            gx, gy, gyaw = resolved
-            tag = 'home-resend'
-        elif self._clearance_goal is not None:
-            gx, gy = self._clearance_goal
-            gyaw = math.atan2(home[1] - gy, home[0] - gx)
-            resolved = self._resolve_chase_goal(
-                self.carrier_ns, cpose, (gx, gy), allow_partial=True)
-            if resolved is None:
-                self._log_verbose_warn(
-                    'CTF CHASE: %s no safe clearance resend', self.carrier_ns)
-                return
-            gx, gy, gyaw = resolved
-            tag = 'clearance-resend'
-        else:
+        resolved = self._resolve_chase_goal(
+            self.carrier_ns, cpose, (home[0], home[1]), allow_partial=True)
+        if resolved is None:
+            self._log_verbose_warn(
+                'CTF CHASE: %s no safe plan to home yet', self.carrier_ns)
             return
+        gx, gy, gyaw = resolved
+        self._send_carrier_goal(gx, gy, gyaw, tag='home-resend')
+        self._carrier_on_home_goal = True
+
+    def _clear_move_base_costmaps(self, ns):
+        try:
+            srv = rospy.ServiceProxy('/' + ns + '/move_base/clear_costmaps', Empty)
+            srv()
+        except rospy.ServiceException as exc:
+            self._log_verbose_warn('%s: clear_costmaps failed: %s', ns, exc)
+
+    def _carrier_goal_in_progress(self, ns):
+        state = self._clients[ns].get_state()
+        return state in (
+            GoalStatus.ACTIVE, GoalStatus.PENDING, GoalStatus.RECALLING)
+
+    def _try_send_carrier_home_goal(self, cpose, home, tag):
+        resolved = self._resolve_chase_goal(
+            self.carrier_ns, cpose, (home[0], home[1]), allow_partial=True)
+        if resolved is None:
+            return False
+        gx, gy, gyaw = resolved
         self._send_carrier_goal(gx, gy, gyaw, tag=tag)
+        self._carrier_on_home_goal = True
+        return True
+
+    def _pre_chase_during_pause(self):
+        # Use capture pause to clear costmaps and send carrier straight to home.
+        self._clearance_pre_sent = False
+        self._carrier_on_home_goal = False
+        self._clearance_goal = None
+
+        self._clear_move_base_costmaps(self.carrier_ns)
+        self._clear_move_base_costmaps(self.pursuer_ns)
+
+        cpose = self._get_robot_pose(self.carrier_ns + '/base_footprint')
+        if cpose is None:
+            self._log_warn_event(
+                'CAPTURE PAUSE: missing carrier TF; waiting %.1fs',
+                self.capture_pause_sec)
+            rospy.sleep(self.capture_pause_sec)
+            return
+
+        home = self.homes[self.carrier_ns]
+        self._chase_started = time.monotonic()
+
+        if self._try_send_carrier_home_goal(cpose, home, tag='home-pause'):
+            self._clearance_pre_sent = True
+        else:
+            self._log_warn_event('CAPTURE PAUSE: no safe home goal at start')
+
+        deadline = time.monotonic() + self.capture_pause_sec
+        rate = rospy.Rate(10.0)
+        while time.monotonic() < deadline and not rospy.is_shutdown():
+            rate.sleep()
 
     def _init_chase(self):
-        for ns in self._clients:
-            self._cancel_robot_goal(ns)
-        for ns in self._clients:
-            self._wait_move_base_idle(ns)
-        rospy.sleep(0.3)
+        pre_sent = self._clearance_pre_sent
+        carrier_active = pre_sent and self._carrier_goal_in_progress(self.carrier_ns)
+
+        self._cancel_robot_goal(self.pursuer_ns)
+        if not carrier_active:
+            self._cancel_robot_goal(self.carrier_ns)
+            self._wait_move_base_idle(self.carrier_ns)
+        self._wait_move_base_idle(self.pursuer_ns)
+        if not carrier_active:
+            rospy.sleep(0.3)
 
         cpose = self._get_robot_pose(self.carrier_ns + '/base_footprint')
         ppose = self._get_robot_pose(self.pursuer_ns + '/base_footprint')
         if not cpose or not ppose:
             self._log_warn_event('CHASE: missing TF pose at start')
             self._chase_initialized = True
+            self._clearance_pre_sent = False
             return
 
         home = self.homes[self.carrier_ns]
-        gx, gy, gyaw = self._make_chase_clearance_goal(cpose, home)
-        clearance_dist = math.hypot(gx - cpose[0], gy - cpose[1])
-        self._clearance_goal = (gx, gy)
-        self._carrier_on_home_goal = clearance_dist < self.chase_clearance_min_travel
-        self._chase_started = time.monotonic()
 
-        if self._carrier_on_home_goal:
-            resolved = self._resolve_chase_goal(
-                self.carrier_ns, cpose, (home[0], home[1]), allow_partial=True)
-            if resolved is None:
-                self._log_warn_event(
-                    'CHASE: %s no safe direct home plan; trying clearance',
-                    self.carrier_ns)
-                self._carrier_on_home_goal = False
-                self._clearance_goal = (gx, gy)
-                resolved = self._resolve_chase_goal(
-                    self.carrier_ns, cpose, (gx, gy), allow_partial=True)
-            if resolved is None:
-                self._log_warn_event('CHASE: missing safe carrier goal at start')
-                self._chase_initialized = True
-                return
-            tgx, tgy, tgyaw = resolved
-            self._send_carrier_goal(tgx, tgy, tgyaw, tag='home-start')
-            target = 'base'
+        if carrier_active:
+            self._log_verbose(
+                'CTF CHASE START: carrier home goal kept from capture pause')
         else:
-            resolved = self._resolve_chase_goal(
-                self.carrier_ns, cpose, (gx, gy), allow_partial=True)
-            if resolved is None:
-                self._log_warn_event('CHASE: missing safe clearance goal at start')
+            self._chase_started = time.monotonic()
+            if not self._try_send_carrier_home_goal(cpose, home, tag='home-start'):
+                self._log_warn_event('CHASE: missing safe carrier home goal at start')
                 self._chase_initialized = True
+                self._clearance_pre_sent = False
                 return
-            tgx, tgy, tgyaw = resolved
-            self._send_carrier_goal(tgx, tgy, tgyaw, tag='clearance-start')
-            target = 'clearance'
 
         self._log_game_phase(
             'CHASE', 'carrier=%s pursuer=%s' % (self.carrier_ns, self.pursuer_ns))
-        self._log_verbose(
-            'CTF CHASE START: capturer=%s carrier=%s -> %s (%.2f, %.2f); pursuer=%s',
-            self._capturer_ns, self.carrier_ns, target,
-            home[0] if self._carrier_on_home_goal else tgx,
-            home[1] if self._carrier_on_home_goal else tgy,
-            self.pursuer_ns)
+        if not carrier_active:
+            self._log_verbose(
+                'CTF CHASE START: capturer=%s carrier=%s -> home (%.2f, %.2f); pursuer=%s',
+                self._capturer_ns, self.carrier_ns,
+                home[0], home[1], self.pursuer_ns)
 
         self._last_carrier_progress_home_dist = math.hypot(
             cpose[0] - home[0], cpose[1] - home[1])
         self._last_carrier_progress_time = time.monotonic()
         self._send_pursuer_direct_chase(cpose, ppose)
         self._chase_initialized = True
+        self._clearance_pre_sent = False
 
     def _tick_chase(self):
         cpose = self._get_robot_pose(self.carrier_ns + '/base_footprint')
@@ -1402,30 +1410,6 @@ class SlamFrontierExplorerCtf(FrontierExplorationMixin):
                 self.carrier_ns, carrier_home_dist)
             self.game_state = 'FINISHED'
             return
-
-        if not self._carrier_on_home_goal and self._clearance_goal is not None:
-            gx, gy = self._clearance_goal
-            clearance_dist = math.hypot(cpose[0] - gx, cpose[1] - gy)
-            clearance_ok = clearance_dist <= self.chase_clearance_reached_dist
-            clearance_goal_done = (
-                self._goal_succeeded(self.carrier_ns)
-                and time.monotonic() - self._chase_started > 1.0)
-            if clearance_ok or clearance_goal_done:
-                resolved = self._resolve_chase_goal(
-                    self.carrier_ns, cpose, (home[0], home[1]), allow_partial=True)
-                if resolved is not None:
-                    gx, gy, gyaw = resolved
-                    self._send_carrier_goal(gx, gy, gyaw, tag='home-after-clearance')
-                    self._carrier_on_home_goal = True
-                    self._last_carrier_progress_time = time.monotonic()
-                    self._last_carrier_progress_home_dist = carrier_home_dist
-                    self._log_verbose(
-                        'CTF CHASE: %s reached clearance; continuing to base',
-                        self.carrier_ns)
-                elif clearance_goal_done:
-                    self._log_verbose_warn(
-                        'CTF CHASE: %s clearance done but no safe home plan yet',
-                        self.carrier_ns)
 
         now = time.monotonic()
         if self._carrier_on_home_goal:
@@ -1486,12 +1470,14 @@ class SlamFrontierExplorerCtf(FrontierExplorationMixin):
             (now - self._last_pursuer_progress_time) >= 8.0 and pursuer_active)
 
         chase_ready = time.monotonic() - self._chase_started > 1.0
+        time_since_refresh = now - self._last_direct_chase_sent
         refresh_pursuer = chase_ready and (
             not self._has_intercept_goal or
             pursuer_failed or
             pursuer_succeeded or
             pursuer_stuck or
-            carrier_move >= self.direct_chase_carrier_move)
+            (carrier_move >= self.direct_chase_carrier_move and
+             time_since_refresh >= self.direct_chase_refresh_sec))
         if refresh_pursuer:
             if d <= self.intercept_direct_chase_distance or not self.intercept_enabled:
                 self._send_pursuer_direct_chase(cpose, ppose)
@@ -1522,8 +1508,6 @@ class SlamFrontierExplorerCtf(FrontierExplorationMixin):
         self._has_intercept_goal = False
         self._intercept_anchor = None
         self._pursuer_was_succeeded = False
-        self._carrier_on_home_goal = False
-        self._clearance_goal = None
         self._capture_phase_pub.publish(Bool(data=False))
 
     def _capture_flag(self, ns, flag_xy):
@@ -1554,7 +1538,7 @@ class SlamFrontierExplorerCtf(FrontierExplorationMixin):
             self._flag_captured_pub.publish(Bool(data=True))
 
         self._enter_post_capture_phase()
-        rospy.sleep(self.capture_pause_sec)
+        self._pre_chase_during_pause()
 
         with self._capture_lock:
             if self.game_state == 'CAPTURED':

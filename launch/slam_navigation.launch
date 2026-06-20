@@ -32,13 +32,16 @@
       <param name="local_costmap/robot_base_frame" value="robot1/base_footprint"/>
       <param name="global_costmap/global_frame" value="$(arg world_frame)"/>
       <param name="global_costmap/static_layer/map_topic" value="$(arg merged_map_topic)"/>
-      <param name="local_costmap/global_frame" value="robot1/odom"/>
+      <!-- Use world_frame so local costmap aligns with /merged_map in RViz and SLAM. -->
+      <param name="local_costmap/global_frame" value="$(arg world_frame)"/>
       <param name="local_costmap/obstacle_layer/scan/topic" value="/robot1/scan_filtered"/>
       <param name="local_costmap/obstacle_layer/other_robot/topic" value="/robot1/other_robot_cloud"/>
       <param name="local_costmap/obstacle_layer/other_robot/sensor_frame" value="$(arg world_frame)"/>
+      <param name="local_costmap/obstacle_layer/scan/observation_persistence" value="0.0"/>
+      <param name="local_costmap/obstacle_layer/other_robot/observation_persistence" value="0.0"/>
+      <param name="global_costmap/obstacle_layer/observation_sources" value="scan"/>
       <param name="global_costmap/obstacle_layer/scan/topic" value="/robot1/scan_filtered"/>
-      <param name="global_costmap/obstacle_layer/other_robot/topic" value="/robot1/other_robot_cloud"/>
-      <param name="global_costmap/obstacle_layer/other_robot/sensor_frame" value="$(arg world_frame)"/>
+      <param name="global_costmap/obstacle_layer/scan/observation_persistence" value="0.0"/>
       <param name="base_global_planner" value="global_planner/GlobalPlanner"/>
       <rosparam file="$(find ctf_navigation)/params/planner_global_slam_nav.yaml"
                 command="load" ns="GlobalPlanner"/>
@@ -70,13 +73,15 @@
       <param name="local_costmap/robot_base_frame" value="robot2/base_footprint"/>
       <param name="global_costmap/global_frame" value="$(arg world_frame)"/>
       <param name="global_costmap/static_layer/map_topic" value="$(arg merged_map_topic)"/>
-      <param name="local_costmap/global_frame" value="robot2/odom"/>
+      <param name="local_costmap/global_frame" value="$(arg world_frame)"/>
       <param name="local_costmap/obstacle_layer/scan/topic" value="/robot2/scan_filtered"/>
       <param name="local_costmap/obstacle_layer/other_robot/topic" value="/robot2/other_robot_cloud"/>
       <param name="local_costmap/obstacle_layer/other_robot/sensor_frame" value="$(arg world_frame)"/>
+      <param name="local_costmap/obstacle_layer/scan/observation_persistence" value="0.0"/>
+      <param name="local_costmap/obstacle_layer/other_robot/observation_persistence" value="0.0"/>
+      <param name="global_costmap/obstacle_layer/observation_sources" value="scan"/>
       <param name="global_costmap/obstacle_layer/scan/topic" value="/robot2/scan_filtered"/>
-      <param name="global_costmap/obstacle_layer/other_robot/topic" value="/robot2/other_robot_cloud"/>
-      <param name="global_costmap/obstacle_layer/other_robot/sensor_frame" value="$(arg world_frame)"/>
+      <param name="global_costmap/obstacle_layer/scan/observation_persistence" value="0.0"/>
       <param name="base_global_planner" value="global_planner/GlobalPlanner"/>
       <rosparam file="$(find ctf_navigation)/params/planner_global_slam_nav.yaml"
                 command="load" ns="GlobalPlanner"/>

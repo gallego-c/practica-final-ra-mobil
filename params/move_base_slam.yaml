@@ -10,5 +10,5 @@ oscillation_timeout:    5.0
 oscillation_distance:   0.12
 
 recovery_behavior_enabled: true
-clearing_rotation_allowed: true
+clearing_rotation_allowed: false
 conservative_reset_dist:   2.5
