@@ -1,6 +1,6 @@
 /**
  * @file flag_detector_node.cpp
- * @brief Detección de la bandera por cámara (HSV rojo) + posición con LIDAR y TF.
+ * @brief Detección de la bandera por cámara (ArUco/AprilTag) + posición con LIDAR y TF.
  *
  * Publica (en el namespace del robot):
  *   ~/flag_found    (std_msgs/Bool)
@@ -13,6 +13,7 @@
 
 #include <cv_bridge/cv_bridge.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <opencv2/aruco.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <ros/ros.h>
@@ -26,8 +27,8 @@
 
 #include "ctf_navigation/common/geometry.hpp"
 #include "ctf_navigation/common/tf_helper.hpp"
+#include "ctf_navigation/vision/aruco_flag_detector.hpp"
 #include "ctf_navigation/vision/laser_utils.hpp"
-#include "ctf_navigation/vision/red_flag_detector.hpp"
 
 namespace
 {
@@ -41,10 +42,12 @@ struct FlagDetectorConfig
   std::string map_frame = "map";
   double horizontal_fov = 1.085595;
   double max_detection_distance = 5.0;
-  double range_window = 0.10;
+  double range_window = 0.25;
   double max_image_age = 1.0;  // 0 = disable stale-image check (for real robots with clock skew)
+  bool drop_delayed_frames = true;  // false en robot real (vision_real.yaml)
+  double flag_hold_sec = 0.0;  // >0: mantener flag_found tras última detección (robot real)
   bool publish_debug = true;
-  ctf_navigation::vision::RedDetectorConfig red;
+  ctf_navigation::vision::ArucoDetectorConfig aruco;
 };
 
 class FlagDetectorNode
@@ -86,6 +89,9 @@ public:
              cfg_.compressed_camera_topic.empty() ? "(disabled)" : robot_nh.resolveName(cfg_.compressed_camera_topic).c_str(),
              robot_nh.resolveName(cfg_.scan_topic).c_str(),
              cfg_.base_frame.c_str());
+    ROS_INFO("flag_detector: AprilTag/ArUco marker_id=%d dictionary=%d (%s)",
+             cfg_.aruco.marker_id, cfg_.aruco.dictionary_id,
+             ctf_navigation::vision::arucoDictName(cfg_.aruco.dictionary_id));
   }
 
   bool hasReceivedImages() const { return images_received_; }
@@ -106,7 +112,7 @@ private:
   {
     images_received_ = true;
 
-    if (isFrameTooOld(msg->header.stamp))
+    if (cfg_.drop_delayed_frames && isFrameTooOld(msg->header.stamp))
     {
       ROS_WARN_THROTTLE(2.0, "Dropping delayed raw image frame to maintain real-time flow");
       return;
@@ -160,7 +166,7 @@ private:
   {
     images_received_ = true;
 
-    if (isFrameTooOld(msg->header.stamp))
+    if (cfg_.drop_delayed_frames && isFrameTooOld(msg->header.stamp))
     {
       ROS_WARN_THROTTLE(2.0, "Dropping delayed compressed image frame to maintain real-time flow");
       return;
@@ -191,19 +197,69 @@ private:
       }
     }
 
-    const auto det = ctf_navigation::vision::detectRedBlob(bgr, cfg_.red);
+    // ── Detección ArUco/AprilTag ──
+    ctf_navigation::vision::ArucoDetection aruco_det =
+        ctf_navigation::vision::detectArucoFlag(bgr, cfg_.aruco);
+
+    const bool detected_now = aruco_det.found;
+    if (detected_now)
+    {
+      last_good_det_ = aruco_det;
+      last_good_time_ = ros::Time::now();
+      have_last_good_ = true;
+    }
+
+    bool found = detected_now;
+    if (!found && have_last_good_ && cfg_.flag_hold_sec > 0.0)
+    {
+      const double since_good = (ros::Time::now() - last_good_time_).toSec();
+      if (since_good <= cfg_.flag_hold_sec)
+      {
+        found = true;
+        aruco_det = last_good_det_;
+      }
+      else
+      {
+        have_last_good_ = false;
+      }
+    }
+
+    const double centroid_x = aruco_det.centroid_x;
+    const double area = aruco_det.area;
+
+    if (detected_now)
+    {
+      ROS_INFO_THROTTLE(2.0, "ArUco: id=%d detected (dict=%s, area=%.0f)",
+                        cfg_.aruco.marker_id,
+                        ctf_navigation::vision::arucoDictName(aruco_det.detected_dict_id),
+                        area);
+    }
+    else if (!found)
+    {
+      if (!aruco_det.debug_note.empty())
+      {
+        ROS_WARN_THROTTLE(5.0, "ArUco: marker id=%d NOT found (%dx%d) — %s",
+                          cfg_.aruco.marker_id, bgr.cols, bgr.rows,
+                          aruco_det.debug_note.c_str());
+      }
+      else
+      {
+        ROS_WARN_THROTTLE(5.0, "ArUco: marker id=%d NOT found in any dictionary (image %dx%d)",
+                          cfg_.aruco.marker_id, bgr.cols, bgr.rows);
+      }
+    }
 
     std_msgs::Bool found_msg;
-    found_msg.data = det.found;
+    found_msg.data = found;
     found_pub_.publish(found_msg);
 
     boost::optional<geometry_msgs::PoseStamped> estimate;
-    if (det.found)
+    if (found)
     {
       const double bearing = ctf_navigation::vision::bearingFromCentroid(
-          det.centroid_x, bgr.cols, cfg_.horizontal_fov);
-      ROS_DEBUG_THROTTLE(1.0, "Red flag candidate: area=%.0f cx=%.0f bearing=%.2f rad",
-                        det.area, det.centroid_x, bearing);
+          centroid_x, bgr.cols, cfg_.horizontal_fov);
+      ROS_DEBUG_THROTTLE(1.0, "Flag candidate: area=%.0f cx=%.0f bearing=%.2f rad",
+                        area, centroid_x, bearing);
       estimate = estimateFlagPose(bearing, stamp);
       if (estimate)
       {
@@ -212,14 +268,13 @@ private:
       else
       {
         ROS_WARN_THROTTLE(3.0,
-                          "Red blob seen (area=%.0f) but no LIDAR/TF estimate",
-                          det.area);
+                          "Flag seen (area=%.0f) but no LIDAR/TF estimate", area);
       }
     }
 
     if (cfg_.publish_debug)
     {
-      publishDebug(bgr, det, estimate, stamp);
+      publishDebugAruco(bgr, aruco_det, estimate, stamp);
     }
   }
 
@@ -270,53 +325,50 @@ private:
     return pose_map;
   }
 
-  void publishDebug(const cv::Mat& frame,
-                    const ctf_navigation::vision::RedDetection& det,
-                    const boost::optional<geometry_msgs::PoseStamped>& estimate,
-                    const ros::Time& stamp)
+  void publishDebugAruco(const cv::Mat& frame,
+                         const ctf_navigation::vision::ArucoDetection& det,
+                         const boost::optional<geometry_msgs::PoseStamped>& estimate,
+                         const ros::Time& stamp)
   {
     cv::Mat dbg = frame.clone();
-    if (!det.mask.empty())
+    if (det.found && det.corners.size() == 4)
     {
-      dbg.setTo(cv::Scalar(0, 255, 0), det.mask);
-    }
-    if (det.found && det.centroid_x >= 0)
-    {
+      // Dibujar el contorno del marcador ArUco
+      for (size_t i = 0; i < 4; ++i)
+      {
+        cv::line(dbg, det.corners[i], det.corners[(i + 1) % 4],
+                 cv::Scalar(0, 255, 0), 2);
+      }
       const int cx = static_cast<int>(det.centroid_x);
-      cv::line(dbg, cv::Point(cx, 0), cv::Point(cx, dbg.rows), cv::Scalar(255, 0, 0), 2);
+      cv::circle(dbg, cv::Point(cx, static_cast<int>(det.centroid_y)), 6,
+                 cv::Scalar(255, 0, 0), -1);
       char buf[128];
       if (estimate)
       {
-        snprintf(buf, sizeof(buf), "FLAG area=%d @ (%.2f, %.2f)",
-                 static_cast<int>(det.area), estimate->pose.position.x,
+        snprintf(buf, sizeof(buf), "ARUCO id=%d @ (%.2f, %.2f)",
+                 cfg_.aruco.marker_id, estimate->pose.position.x,
                  estimate->pose.position.y);
       }
       else
       {
-        snprintf(buf, sizeof(buf), "FLAG area=%d", static_cast<int>(det.area));
+        snprintf(buf, sizeof(buf), "ARUCO id=%d area=%.0f",
+                 cfg_.aruco.marker_id, det.area);
       }
-      const std::string text(buf);
-      cv::putText(dbg, text, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7,
+      cv::putText(dbg, buf, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7,
                   cv::Scalar(0, 255, 255), 2);
     }
     else
     {
-      char buf[96];
-      snprintf(buf, sizeof(buf), "red area=%d min=%d", static_cast<int>(det.area),
-               cfg_.red.min_blob_area);
-      cv::putText(dbg, buf, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7,
-                  cv::Scalar(0, 255, 255), 2);
+      cv::putText(dbg, "ARUCO: no marker", cv::Point(10, 30),
+                  cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 255), 2);
     }
     try
     {
       std_msgs::Header header;
       header.stamp = stamp;
       header.frame_id = cfg_.base_frame;
-
       const auto out = cv_bridge::CvImage(header, "bgr8", dbg).toImageMsg();
       debug_pub_.publish(out);
-
-      // Publish compressed debug image as well
       sensor_msgs::CompressedImage compressed_out;
       compressed_out.header = header;
       compressed_out.format = "jpeg";
@@ -371,6 +423,9 @@ private:
   bool images_received_ = false;
   double estimated_offset_ = 0.0;
   bool offset_initialized_ = false;
+  bool have_last_good_ = false;
+  ros::Time last_good_time_;
+  ctf_navigation::vision::ArucoDetection last_good_det_;
 
   ros::Subscriber scan_sub_;
   ros::Subscriber image_sub_;
@@ -395,19 +450,18 @@ FlagDetectorConfig loadConfig(ros::NodeHandle& pnh)
             cfg.max_detection_distance);
   pnh.param("range_window", cfg.range_window, cfg.range_window);
   pnh.param("max_image_age", cfg.max_image_age, cfg.max_image_age);
+  pnh.param("drop_delayed_frames", cfg.drop_delayed_frames, cfg.drop_delayed_frames);
+  pnh.param("flag_hold_sec", cfg.flag_hold_sec, cfg.flag_hold_sec);
+  if (cfg.max_image_age <= 0.0)
+  {
+    cfg.drop_delayed_frames = false;
+  }
   pnh.param("publish_debug", cfg.publish_debug, cfg.publish_debug);
-  pnh.param("min_blob_area", cfg.red.min_blob_area, cfg.red.min_blob_area);
-  pnh.param("h_low1", cfg.red.h_low1, cfg.red.h_low1);
-  pnh.param("h_high1", cfg.red.h_high1, cfg.red.h_high1);
-  pnh.param("h_low2", cfg.red.h_low2, cfg.red.h_low2);
-  pnh.param("h_high2", cfg.red.h_high2, cfg.red.h_high2);
-  pnh.param("s_min", cfg.red.s_min, cfg.red.s_min);
-  pnh.param("v_min", cfg.red.v_min, cfg.red.v_min);
-  pnh.param("use_rgb_fallback", cfg.red.use_rgb_fallback,
-            cfg.red.use_rgb_fallback);
-  pnh.param("rgb_red_min", cfg.red.rgb_red_min, cfg.red.rgb_red_min);
-  pnh.param("rgb_red_dominance", cfg.red.rgb_red_dominance,
-            cfg.red.rgb_red_dominance);
+
+  // ArUco / AprilTag
+  pnh.param("aruco_marker_id", cfg.aruco.marker_id, cfg.aruco.marker_id);
+  pnh.param("aruco_dictionary", cfg.aruco.dictionary_id, cfg.aruco.dictionary_id);
+
   return cfg;
 }
 

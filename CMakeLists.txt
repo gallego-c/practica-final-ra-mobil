@@ -45,8 +45,10 @@ include_directories(
   ${OpenCV_INCLUDE_DIRS}
 )
 
-# ── Librería de visión (detección roja) ───────────────────────────────────────
-add_library(ctf_vision src/vision/red_flag_detector.cpp)
+# ── Librería de visión (detección ArUco/AprilTag) ─────────────────────────────
+add_library(ctf_vision
+  src/vision/aruco_flag_detector.cpp
+)
 target_link_libraries(ctf_vision ${OpenCV_LIBS})
 
 # ── Librería de juego (exploración + agente) ──────────────────────────────────
