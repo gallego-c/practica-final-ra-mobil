@@ -1,6 +1,6 @@
 <launch>
-  <!-- world: ctf_world | nine_rooms_world | hallway_world | hallway_obstacles_world -->
-  <arg name="world" default="ctf_world"/>
+  <!-- world: nine_rooms_world | hallway_world | hallway_obstacles_world -->
+  <arg name="world" default="nine_rooms_world"/>
   <arg name="robot1_x" default="$(eval -3.5 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else -3.0)"/>
   <arg name="robot1_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else -3.0)"/>
   <arg name="robot1_yaw" default="0.0"/>

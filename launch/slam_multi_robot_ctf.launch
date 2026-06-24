@@ -3,8 +3,8 @@
   <arg name="merged_map_topic" default="/merged_map"/>
   <arg name="rviz" default="true"/>
 
-  <!-- world: ctf_world | nine_rooms_world | hallway_world | hallway_obstacles_world -->
-  <arg name="world" default="ctf_world"/>
+  <!-- world: nine_rooms_world | hallway_world | hallway_obstacles_world -->
+  <arg name="world" default="nine_rooms_world"/>
 
   <!-- Spawning initial poses in Gazebo (defaults depend on world; see simulation.launch) -->
   <arg name="robot1_x" default="$(eval -3.5 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else -3.0)"/>

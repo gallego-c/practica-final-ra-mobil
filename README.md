@@ -89,9 +89,9 @@ Para lanzar la simulación en el mapa de las **9 habitaciones** (por defecto rec
 roslaunch ctf_navigation slam_multi_robot_ctf.launch world:=nine_rooms_world
 ```
 
-Para lanzarla en otros mundos disponibles (`ctf_world`, `maze_world` o `hallway_world`):
+Para lanzarla en otros mundos disponibles (`hallway_world` o `hallway_obstacles_world`):
 ```bash
-roslaunch ctf_navigation slam_multi_robot_ctf.launch world:=maze_world
+roslaunch ctf_navigation slam_multi_robot_ctf.launch world:=hallway_world
 ```
 
 ### 3. Parámetros útiles al lanzar
