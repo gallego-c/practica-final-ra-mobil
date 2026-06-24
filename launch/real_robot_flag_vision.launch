@@ -94,8 +94,8 @@
         args="$(arg robot2_image_topic)"
         if="$(eval arg('viz') in ['rqt', 'both'])"/>
 
-  <!-- RViz with the real multi-robot monitoring config -->
+  <!-- RViz with flag-detection config -->
   <node pkg="rviz" type="rviz" name="rviz"
-        args="-d $(find ctf_navigation)/rviz/slam_multi_robot_ctf.rviz"
+        args="-d $(find ctf_navigation)/rviz/flag_detection.rviz"
         if="$(eval arg('viz') in ['rviz', 'both'])"/>
 </launch>

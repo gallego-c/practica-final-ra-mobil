@@ -1,0 +1,166 @@
+<launch>
+  <arg name="world_frame" default="map"/>
+  <arg name="merged_map_topic" default="/merged_map"/>
+  <arg name="rviz" default="true"/>
+
+  <!-- world: ctf_world | nine_rooms_world | hallway_world | hallway_obstacles_world -->
+  <arg name="world" default="ctf_world"/>
+
+  <!-- Spawning initial poses in Gazebo (defaults depend on world; see simulation.launch) -->
+  <arg name="robot1_x" default="$(eval -3.5 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else -3.0)"/>
+  <arg name="robot1_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else -3.0)"/>
+  <arg name="robot1_yaw" default="0.0"/>
+  <arg name="robot2_x" default="$(eval 3.5 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else 3.0)"/>
+  <arg name="robot2_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else 3.0)"/>
+  <arg name="robot2_yaw" default="3.1416"/>
+
+  <!-- Posición de la bandera (red flag) -->
+  <arg name="flag_x" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world', 'nine_rooms_world'] else -3.2)"/>
+  <arg name="flag_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world', 'nine_rooms_world'] else 3.2)"/>
+
+  <!-- Initial alignment map offset for multirobot_map_merge -->
+  <arg name="robot1_map_init_x" default="0.0"/>
+  <arg name="robot1_map_init_y" default="0.0"/>
+  <arg name="robot1_map_init_yaw" default="0.0"/>
+  <arg name="robot2_map_init_x" default="0.0"/>
+  <arg name="robot2_map_init_y" default="0.0"/>
+  <arg name="robot2_map_init_yaw" default="0.0"/>
+
+  <arg name="quiet_slam" default="true"/>
+
+  <!-- 1. Gazebo simulation: spawns robot1, robot2 and the flag -->
+  <include file="$(find ctf_navigation)/launch/simulation.launch">
+    <arg name="world" value="$(arg world)"/>
+    <arg name="robot1_x" value="$(arg robot1_x)"/>
+    <arg name="robot1_y" value="$(arg robot1_y)"/>
+    <arg name="robot1_yaw" value="$(arg robot1_yaw)"/>
+    <arg name="robot2_x" value="$(arg robot2_x)"/>
+    <arg name="robot2_y" value="$(arg robot2_y)"/>
+    <arg name="robot2_yaw" value="$(arg robot2_yaw)"/>
+    <arg name="flag_x" value="$(arg flag_x)"/>
+    <arg name="flag_y" value="$(arg flag_y)"/>
+  </include>
+
+  <!-- 2. Shared SLAM (GMapping for both robots & map_merge) -->
+  <include file="$(find ctf_navigation)/launch/shared_slam.launch">
+    <arg name="world_frame" value="$(arg world_frame)"/>
+    <arg name="merged_map_topic" value="$(arg merged_map_topic)"/>
+    <arg name="quiet_slam" value="$(arg quiet_slam)"/>
+    <arg name="robot1_init_x" value="$(arg robot1_map_init_x)"/>
+    <arg name="robot1_init_y" value="$(arg robot1_map_init_y)"/>
+    <arg name="robot1_init_yaw" value="$(arg robot1_map_init_yaw)"/>
+    <arg name="robot2_init_x" value="$(arg robot2_map_init_x)"/>
+    <arg name="robot2_init_y" value="$(arg robot2_map_init_y)"/>
+    <arg name="robot2_init_yaw" value="$(arg robot2_map_init_yaw)"/>
+  </include>
+
+  <!-- 3. Inter-robot priority coordination & collision avoidance (Twist multiplexing and PointCloud2 obstacles) -->
+  <node pkg="ctf_navigation" type="robot_coordinator.py"
+        name="robot_coordinator" output="screen">
+    <param name="target_frame" value="$(arg world_frame)"/>
+    <param name="robot_radius" value="0.28"/>
+    <param name="max_avoid_distance" value="3.5"/>
+  </node>
+
+  <!-- 4. Navigation (move_base) for both robots on the /merged_map -->
+  <include file="$(find ctf_navigation)/launch/slam_navigation.launch">
+    <arg name="world_frame" value="$(arg world_frame)"/>
+    <arg name="merged_map_topic" value="$(arg merged_map_topic)"/>
+  </include>
+
+  <!-- 5. Visión: detector de bandera por robot -->
+  <group ns="robot1">
+    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
+          output="screen">
+      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
+      <param name="camera_topic" value="camera/rgb/image_raw"/>
+      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
+      <param name="scan_topic" value="scan"/>
+      <param name="base_frame" value="robot1/base_footprint"/>
+      <param name="map_frame" value="$(arg world_frame)"/>
+    </node>
+  </group>
+
+  <group ns="robot2">
+    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
+          output="screen">
+      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
+      <param name="camera_topic" value="camera/rgb/image_raw"/>
+      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
+      <param name="scan_topic" value="scan"/>
+      <param name="base_frame" value="robot2/base_footprint"/>
+      <param name="map_frame" value="$(arg world_frame)"/>
+    </node>
+  </group>
+
+  <!-- 6. Autonomous exploration + CTF Game Coordinator -->
+  <node pkg="ctf_navigation" type="slam_frontier_explorer_ctf.py"
+        name="slam_frontier_explorer_ctf" output="screen" required="true">
+    <param name="map_frame" value="$(arg world_frame)"/>
+    <param name="map_topic" value="$(arg merged_map_topic)"/>
+    <param name="exploration_timeout" value="300.0"/>
+    <param name="goal_timeout" value="45.0"/>
+    <param name="min_coverage" value="0.72"/>
+    <param name="gain_scale" value="2.0"/>
+    <param name="voronoi_margin" value="0.15"/>
+    <param name="separation_weight" value="1.0"/>
+    <param name="flag_bias_weight" value="0.8"/>
+    <param name="territory_penalty" value="0.5"/>
+    <param name="frontier_claim_sec" value="35.0"/>
+    <param name="min_goal_clearance" value="0.26"/>
+    <param name="robot_radius" value="0.28"/>
+    <param name="progress_timeout" value="15.0"/>
+    <param name="min_progress_distance" value="0.15"/>
+    <param name="startup_delay" value="12.0"/>
+    <param name="move_base_timeout" value="120.0"/>
+    <param name="idle_frontier_cycles" value="3"/>
+
+    <!-- log_mode: verbose | brief (phases + goals + capture/chase only) -->
+    <param name="log_mode" value="brief"/>
+
+    <!-- CTF: standoff must account for flag cylinder (r=0.03) + costmap inflation -->
+    <param name="flag_collision_radius" value="0.03"/>
+    <param name="flag_standoff_distance" value="0.20"/>
+    <param name="flag_capture_margin" value="0.08"/>
+    <param name="flag_capture_distance" value="0.60"/>
+    <param name="flag_capture_min_pursuit_sec" value="1.0"/>
+    <param name="flag_capture_min_progress" value="0.20"/>
+    <param name="flag_approach_stall_sec" value="5.0"/>
+    <param name="flag_approach_nudge_sec" value="3.0"/>
+    <param name="flag_approach_max_distance" value="0.85"/>
+    <param name="flag_approach_step" value="1.20"/>
+    <param name="flag_approach_backoff_max" value="1.10"/>
+    <param name="flag_approach_flank_step" value="0.55"/>
+    <param name="flag_approach_detour_step" value="1.00"/>
+    <param name="flag_approach_detour_after" value="3"/>
+    <param name="chase_flag_clearance" value="0.75"/>
+    <param name="chase_clearance_reached_dist" value="0.20"/>
+    <param name="chase_clearance_min_travel" value="0.25"/>
+    <param name="catch_distance" value="0.65"/>
+    <param name="chase_goal_period" value="1.0"/>
+    <param name="capture_pause_sec" value="3.0"/>
+    <param name="flag_memory_timeout" value="120.0"/>
+    <param name="flag_support_standoff" value="2.20"/>
+    <param name="flag_global_plan_min_dist" value="0.85"/>
+    <param name="waypoint_reached_dist" value="0.55"/>
+    <param name="intercept_enabled" value="true"/>
+    <param name="intercept_direct_chase_distance" value="1.25"/>
+    <param name="intercept_carrier_move_threshold" value="1.25"/>
+    <param name="carrier_home_resend_cooldown" value="3.0"/>
+    <param name="carrier_home_stuck_timeout" value="6.0"/>
+    <param name="carrier_home_progress_threshold" value="0.10"/>
+    <param name="direct_chase_refresh_sec" value="2.0"/>
+    <param name="direct_chase_carrier_move" value="0.25"/>
+    <param name="intercept_arrival_margin" value="0.30"/>
+    <param name="intercept_step" value="0.25"/>
+    <param name="intercept_min_lead" value="1.0"/>
+
+    <!-- Home coordinates (match Gazebo spawn poses) -->
+    <rosparam param="robot1_home" subst_value="True">[$(arg robot1_x), $(arg robot1_y), $(arg robot1_yaw)]</rosparam>
+    <rosparam param="robot2_home" subst_value="True">[$(arg robot2_x), $(arg robot2_y), $(arg robot2_yaw)]</rosparam>
+  </node>
+
+  <!-- 7. RViz: merged SLAM map, per-robot costmaps, and navigation plans -->
+  <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz"
+        args="-d $(find ctf_navigation)/rviz/slam_multi_robot_ctf.rviz"/>
+</launch>

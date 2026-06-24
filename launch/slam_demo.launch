@@ -1,0 +1,147 @@
+<launch>
+  <arg name="run_demo" default="true"/>
+  <arg name="run_ctf" default="true"/>
+  <arg name="world_frame" default="map"/>
+  <arg name="merged_map_topic" default="/merged_map"/>
+  <arg name="rviz" default="true"/>
+
+  <!-- world: ctf_world | nine_rooms_world | hallway_world | hallway_obstacles_world -->
+  <arg name="world" default="ctf_world"/>
+
+  <arg name="robot1_x" default="$(eval -3.5 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else -3.0)"/>
+  <arg name="robot1_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else -3.0)"/>
+  <arg name="robot1_yaw" default="0.0"/>
+  <arg name="robot2_x" default="$(eval 3.5 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else 3.0)"/>
+  <arg name="robot2_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else 3.0)"/>
+  <arg name="robot2_yaw" default="3.1416"/>
+  <arg name="flag_x" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world', 'nine_rooms_world'] else -3.2)"/>
+  <arg name="flag_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world', 'nine_rooms_world'] else 3.2)"/>
+
+  <arg name="robot1_map_init_x" default="0.0"/>
+  <arg name="robot1_map_init_y" default="0.0"/>
+  <arg name="robot1_map_init_yaw" default="0.0"/>
+  <arg name="robot2_map_init_x" default="0.0"/>
+  <arg name="robot2_map_init_y" default="0.0"/>
+  <arg name="robot2_map_init_yaw" default="0.0"/>
+
+  <include file="$(find ctf_navigation)/launch/simulation.launch">
+    <arg name="world" value="$(arg world)"/>
+    <arg name="robot1_x" value="$(arg robot1_x)"/>
+    <arg name="robot1_y" value="$(arg robot1_y)"/>
+    <arg name="robot1_yaw" value="$(arg robot1_yaw)"/>
+    <arg name="robot2_x" value="$(arg robot2_x)"/>
+    <arg name="robot2_y" value="$(arg robot2_y)"/>
+    <arg name="robot2_yaw" value="$(arg robot2_yaw)"/>
+    <arg name="flag_x" value="$(arg flag_x)"/>
+    <arg name="flag_y" value="$(arg flag_y)"/>
+  </include>
+
+  <include file="$(find ctf_navigation)/launch/shared_slam.launch">
+    <arg name="world_frame" value="$(arg world_frame)"/>
+    <arg name="merged_map_topic" value="$(arg merged_map_topic)"/>
+    <arg name="robot1_init_x" value="$(arg robot1_map_init_x)"/>
+    <arg name="robot1_init_y" value="$(arg robot1_map_init_y)"/>
+    <arg name="robot1_init_yaw" value="$(arg robot1_map_init_yaw)"/>
+    <arg name="robot2_init_x" value="$(arg robot2_map_init_x)"/>
+    <arg name="robot2_init_y" value="$(arg robot2_map_init_y)"/>
+    <arg name="robot2_init_yaw" value="$(arg robot2_map_init_yaw)"/>
+  </include>
+
+  <node pkg="ctf_navigation" type="robot_obstacle_publisher.py"
+        name="robot_obstacle_publisher" output="screen">
+    <param name="target_frame" value="$(arg world_frame)"/>
+    <param name="robot_radius" value="0.28"/>
+    <param name="max_avoid_distance" value="3.5"/>
+  </node>
+
+  <include file="$(find ctf_navigation)/launch/slam_navigation.launch">
+    <arg name="world_frame" value="$(arg world_frame)"/>
+    <arg name="merged_map_topic" value="$(arg merged_map_topic)"/>
+  </include>
+
+  <!-- Pure SLAM exploration mode: no CTF node owns move_base goals. -->
+  <node if="$(eval arg('run_demo') == 'true' and arg('run_ctf') == 'false')"
+        pkg="ctf_navigation" type="slam_frontier_explorer.py"
+        name="slam_frontier_explorer" output="screen">
+    <param name="map_frame" value="$(arg world_frame)"/>
+    <param name="map_topic" value="$(arg merged_map_topic)"/>
+    <param name="exploration_timeout" value="300.0"/>
+    <param name="goal_timeout" value="45.0"/>
+    <param name="min_coverage" value="0.72"/>
+    <param name="gain_scale" value="2.5"/>
+    <param name="min_goal_clearance" value="0.15"/>
+    <param name="progress_timeout" value="15.0"/>
+    <param name="min_progress_distance" value="0.15"/>
+    <param name="startup_delay" value="30.0"/>
+    <param name="move_base_timeout" value="120.0"/>
+    <param name="idle_frontier_cycles" value="12"/>
+  </node>
+
+  <group if="$(eval arg('run_demo') == 'true' and arg('run_ctf') == 'true')"
+         ns="robot1">
+    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
+          output="screen">
+      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
+      <param name="camera_topic" value="camera/rgb/image_raw"/>
+      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
+      <param name="base_frame" value="robot1/base_footprint"/>
+      <param name="map_frame" value="$(arg world_frame)"/>
+    </node>
+  </group>
+
+  <group if="$(eval arg('run_demo') == 'true' and arg('run_ctf') == 'true')"
+         ns="robot2">
+    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
+          output="screen">
+      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
+      <param name="camera_topic" value="camera/rgb/image_raw"/>
+      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
+      <param name="base_frame" value="robot2/base_footprint"/>
+      <param name="map_frame" value="$(arg world_frame)"/>
+    </node>
+  </group>
+
+  <node if="$(eval arg('run_demo') == 'true' and arg('run_ctf') == 'true')"
+        pkg="ctf_navigation" type="ctf_coordinator_node"
+        name="ctf_coordinator" output="screen">
+    <param name="map_frame" value="$(arg world_frame)"/>
+    <param name="map_topic" value="$(arg merged_map_topic)"/>
+    <param name="detector_node" value="flag_detector"/>
+    <param name="robot1_ns" value="robot1"/>
+    <param name="robot2_ns" value="robot2"/>
+    <param name="robot1_base_frame" value="robot1/base_footprint"/>
+    <param name="robot2_base_frame" value="robot2/base_footprint"/>
+    <param name="robot1_base_x" value="$(arg robot1_x)"/>
+    <param name="robot1_base_y" value="$(arg robot1_y)"/>
+    <param name="robot1_base_yaw" value="$(arg robot1_yaw)"/>
+    <param name="robot2_base_x" value="$(arg robot2_x)"/>
+    <param name="robot2_base_y" value="$(arg robot2_y)"/>
+    <param name="robot2_base_yaw" value="$(arg robot2_yaw)"/>
+    <param name="catch_distance" value="0.65"/>
+    <param name="flag_capture_distance" value="0.40"/>
+    <param name="flag_standoff_distance" value="0.20"/>
+    <param name="chase_flag_clearance" value="0.75"/>
+    <param name="capture_pause_sec" value="3.0"/>
+    <param name="flag_memory_timeout" value="120.0"/>
+    <param name="waypoint_reached_dist" value="0.55"/>
+    <param name="chase_goal_period" value="1.0"/>
+    <param name="explore_step" value="0.80"/>
+    <param name="explore_clearance" value="0.25"/>
+    <param name="map_wait_timeout" value="120.0"/>
+    <param name="trail_min_distance" value="0.05"/>
+    <param name="trail_max_poses" value="2000"/>
+    <param name="intercept_enabled" value="true"/>
+    <param name="intercept_direct_chase_distance" value="1.25"/>
+    <param name="intercept_carrier_move_threshold" value="1.25"/>
+    <param name="carrier_home_resend_cooldown" value="3.0"/>
+    <param name="direct_chase_refresh_sec" value="2.0"/>
+    <param name="direct_chase_carrier_move" value="0.25"/>
+    <param name="intercept_arrival_margin" value="0.30"/>
+    <param name="intercept_step" value="0.25"/>
+    <param name="intercept_min_lead" value="1.0"/>
+    <param name="rate_hz" value="5.0"/>
+  </node>
+
+  <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz"
+        args="-d $(find ctf_navigation)/rviz/ctf_game.rviz"/>
+</launch>

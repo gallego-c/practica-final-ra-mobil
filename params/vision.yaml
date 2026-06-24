@@ -1,0 +1,29 @@
+# Parámetros del nodo flag_detector (visión)
+# ------------------------------------------------------------------------------
+# Topic de cámara (relativo al namespace del robot, p. ej. /robot1/...).
+# TurtleBot3 Waffle Pi Gazebo suele publicar camera/rgb/image_raw.
+# NO usar el namespace privado del nodo flag_detector.
+camera_topic: "camera/rgb/image_raw"
+compressed_camera_topic: "camera/rgb/image_raw/compressed"
+scan_topic:   "scan"
+
+# Frames TF (base_frame se sobreescribe por robot en el launch).
+base_frame: "base_footprint"
+map_frame:  "map"
+
+# FOV horizontal cámara Waffle Pi en Gazebo (rad, ~62.2°).
+# Valor real del modelo turtlebot3_waffle_pi.urdf.xacro.
+horizontal_fov: 1.085595
+
+# Distancia máxima (m) a la que se confía en la estimación por LIDAR.
+max_detection_distance: 5.0
+
+# Ventana angular (rad) alrededor del bearing donde se busca el eco láser.
+range_window: 0.25
+
+# ─── ArUco / AprilTag ───────────────────────────────────────────────────
+aruco_marker_id: 3         # Simulador se adaptará para usar marcador ID=3
+aruco_dictionary: 20       # 20 = DICT_APRILTAG_36h11
+
+# Publicar imagen de depuración (~debug_image) con la detección dibujada.
+publish_debug: true

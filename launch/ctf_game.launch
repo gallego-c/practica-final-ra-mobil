@@ -1,0 +1,117 @@
+<launch>
+  <!-- ==========================================================================
+       JUEGO CTF REALISTA
+       Los robots NO conocen la bandera: la descubren explorando + cámara.
+
+       Uso:
+         roslaunch ctf_navigation ctf_game.launch
+         roslaunch ctf_navigation ctf_game.launch flag_x:=2.0 flag_y:=-3.0
+       ========================================================================== -->
+
+  <arg name="localization"  default="static"/>
+  <arg name="rviz"          default="true"/>
+
+  <!-- world: ctf_world | nine_rooms_world | hallway_world | hallway_obstacles_world -->
+  <arg name="world" default="ctf_world"/>
+  <arg name="robot1_x" default="$(eval -3.5 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else -3.0)"/>
+  <arg name="robot1_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else -3.0)"/>
+  <arg name="robot1_yaw" default="0.0"/>
+  <arg name="robot2_x" default="$(eval 3.5 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else 3.0)"/>
+  <arg name="robot2_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world'] else 3.0)"/>
+  <arg name="robot2_yaw" default="3.1416"/>
+  <arg name="flag_x" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world', 'nine_rooms_world'] else -3.2)"/>
+  <arg name="flag_y" default="$(eval 0.0 if arg('world') in ['hallway_world', 'hallway_obstacles_world', 'nine_rooms_world'] else 3.2)"/>
+
+  <!-- ── Simulación Gazebo + bandera ────────────────────────────────────────-->
+  <include file="$(find ctf_navigation)/launch/simulation.launch">
+    <arg name="world" value="$(arg world)"/>
+    <arg name="robot1_x" value="$(arg robot1_x)"/>
+    <arg name="robot1_y" value="$(arg robot1_y)"/>
+    <arg name="robot1_yaw" value="$(arg robot1_yaw)"/>
+    <arg name="robot2_x" value="$(arg robot2_x)"/>
+    <arg name="robot2_y" value="$(arg robot2_y)"/>
+    <arg name="robot2_yaw" value="$(arg robot2_yaw)"/>
+    <arg name="flag_x" value="$(arg flag_x)"/>
+    <arg name="flag_y" value="$(arg flag_y)"/>
+  </include>
+
+  <!-- ── Evitación entre robots (footprint del otro robot como obstáculo) ────-->
+  <node pkg="ctf_navigation" type="robot_obstacle_publisher_node"
+        name="robot_obstacle_publisher" output="screen"/>
+
+  <!-- ── Navegación (map_server + move_base por robot) ──────────────────────-->
+  <include file="$(find ctf_navigation)/launch/navigation.launch">
+    <arg name="localization"  value="$(arg localization)"/>
+  </include>
+
+  <!-- ── Visión: detector de bandera por robot ──────────────────────────────-->
+  <group ns="robot1">
+    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
+          output="screen">
+      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
+      <param name="camera_topic" value="camera/rgb/image_raw"/>
+      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
+      <param name="scan_topic" value="scan"/>
+      <param name="base_frame" value="robot1/base_footprint"/>
+    </node>
+  </group>
+
+  <group ns="robot2">
+    <node pkg="ctf_navigation" type="flag_detector_node" name="flag_detector"
+          output="screen">
+      <rosparam file="$(find ctf_navigation)/params/vision.yaml" command="load"/>
+      <param name="camera_topic" value="camera/rgb/image_raw"/>
+      <param name="compressed_camera_topic" value="camera/rgb/image_raw/compressed"/>
+      <param name="scan_topic" value="scan"/>
+      <param name="base_frame" value="robot2/base_footprint"/>
+    </node>
+  </group>
+
+  <!-- ── Coordinador del juego (exploración + lógica CTF) ────────────────────-->
+  <node pkg="ctf_navigation" type="ctf_coordinator_node" name="ctf_coordinator"
+        output="screen">
+    <param name="map_frame" value="map"/>
+    <param name="map_topic" value="/map"/>
+    <param name="detector_node" value="flag_detector"/>
+
+    <param name="robot1_ns" value="robot1"/>
+    <param name="robot2_ns" value="robot2"/>
+    <param name="robot1_base_frame" value="robot1/base_footprint"/>
+    <param name="robot2_base_frame" value="robot2/base_footprint"/>
+
+    <param name="robot1_base_x" value="$(arg robot1_x)"/>
+    <param name="robot1_base_y" value="$(arg robot1_y)"/>
+    <param name="robot1_base_yaw" value="$(arg robot1_yaw)"/>
+    <param name="robot2_base_x" value="$(arg robot2_x)"/>
+    <param name="robot2_base_y" value="$(arg robot2_y)"/>
+    <param name="robot2_base_yaw" value="$(arg robot2_yaw)"/>
+
+    <param name="flag_capture_distance" value="0.40"/>
+    <param name="flag_standoff_distance" value="0.20"/>
+    <param name="chase_flag_clearance" value="0.75"/>
+    <param name="capture_pause_sec" value="3.0"/>
+    <param name="catch_distance" value="0.65"/>
+    <param name="flag_memory_timeout" value="120.0"/>
+    <param name="waypoint_reached_dist" value="0.55"/>
+    <param name="chase_goal_period" value="1.0"/>
+
+    <param name="explore_step" value="1.0"/>
+    <param name="explore_clearance" value="0.30"/>
+    <param name="map_wait_timeout" value="60.0"/>
+    <param name="trail_min_distance" value="0.05"/>
+    <param name="trail_max_poses" value="2000"/>
+    <param name="intercept_enabled" value="true"/>
+    <param name="intercept_direct_chase_distance" value="1.25"/>
+    <param name="intercept_carrier_move_threshold" value="1.25"/>
+    <param name="carrier_home_resend_cooldown" value="3.0"/>
+    <param name="direct_chase_refresh_sec" value="2.0"/>
+    <param name="direct_chase_carrier_move" value="0.25"/>
+    <param name="intercept_arrival_margin" value="0.30"/>
+    <param name="intercept_step" value="0.25"/>
+    <param name="intercept_min_lead" value="1.0"/>
+    <param name="rate_hz" value="5.0"/>
+  </node>
+
+  <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz"
+        args="-d $(find ctf_navigation)/rviz/ctf_game.rviz"/>
+</launch>

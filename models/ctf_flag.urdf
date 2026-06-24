@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<!--
+  Bandera CTF — se spawnea dinámicamente desde los launch con posición
+  configurable (flag_x / flag_y).
+
+  Diseño:
+    * Banner cilíndrico ROJO (radio 0.12 m, altura 0.7 m) → visible por la
+      cámara desde CUALQUIER ángulo de aproximación.
+    * El cilindro TIENE colisión, así el LIDAR 360º lo detecta y el
+      flag_detector puede estimar su posición (rango + bearing).
+    * Disco rojo en el suelo (sólo visual) para marcar la zona.
+    * <gazebo><static>true</static></gazebo> → no se cae ni se mueve.
+    * Material Gazebo/Red para que se renderice rojo saturado en Gazebo
+      (la detección HSV depende de esto).
+-->
+<robot name="ctf_flag">
+  <link name="base_link">
+
+    <!-- Banner cilíndrico rojo (cuerpo principal, con colisión) -->
+    <visual>
+      <origin xyz="0 0 0.35" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.03" length="0.70"/>
+      </geometry>
+      <material name="flag_red">
+        <color rgba="1.0 0.05 0.05 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.35" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.03" length="0.70"/>
+      </geometry>
+    </collision>
+
+    <!-- Disco rojo en el suelo (sólo visual, sin colisión) -->
+    <visual>
+      <origin xyz="0 0 0.01" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.22" length="0.02"/>
+      </geometry>
+      <material name="flag_red"/>
+    </visual>
+
+    <inertial>
+      <mass value="1.0"/>
+      <inertia ixx="0.01" ixy="0.0" ixz="0.0" iyy="0.01" iyz="0.0" izz="0.01"/>
+    </inertial>
+  </link>
+
+  <gazebo reference="base_link">
+    <material>Gazebo/Red</material>
+  </gazebo>
+  <gazebo>
+    <static>true</static>
+  </gazebo>
+</robot>

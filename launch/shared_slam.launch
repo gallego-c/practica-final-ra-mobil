@@ -19,7 +19,7 @@
   <arg name="robot2_spawn_y" default="0.0"/>
   <arg name="robot2_spawn_yaw" default="0.0"/>
   <arg name="lidar_yaw" default="3.14159265359"/>
-  <arg name="skip_map_merge" default="true"/>
+  <arg name="skip_map_merge" default="false"/>
 
   <!-- Laser scan filters to remove the other robot's body from GMapping and move_base -->
   <group ns="robot1">
@@ -70,7 +70,16 @@
     <param name="map_frame" value="$(arg robot2_map_frame)"/>
   </node>
 
-  <!-- Real robots use map_merge_tf.launch from the parent launch. It follows
-       the explicit map -> robotN/map TF instead of multirobot_map_merge
-       discovery/init_pose state. -->
+  <include unless="$(arg skip_map_merge)" file="$(find ctf_navigation)/launch/map_merge.launch">
+    <arg name="robot1_map_frame" value="$(arg robot1_map_frame)"/>
+    <arg name="robot2_map_frame" value="$(arg robot2_map_frame)"/>
+    <arg name="world_frame" value="$(arg world_frame)"/>
+    <arg name="merged_map_topic" value="$(arg merged_map_topic)"/>
+    <arg name="robot1_init_x" value="$(arg robot1_init_x)"/>
+    <arg name="robot1_init_y" value="$(arg robot1_init_y)"/>
+    <arg name="robot1_init_yaw" value="$(arg robot1_init_yaw)"/>
+    <arg name="robot2_init_x" value="$(arg robot2_init_x)"/>
+    <arg name="robot2_init_y" value="$(arg robot2_init_y)"/>
+    <arg name="robot2_init_yaw" value="$(arg robot2_init_yaw)"/>
+  </include>
 </launch>

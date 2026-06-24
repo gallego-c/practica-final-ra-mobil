@@ -2021,7 +2021,7 @@ class SlamFrontierExplorerCtf:
         self._marker_pub.publish(arr)
 
     def run(self):
-        self._log_verbose('Exploration-based Capture the Flag real-robot stack active')
+        self._log_verbose('Exploration-based Capture the Flag simulation active')
 
         threads = []
         for cfg in self.robots:
