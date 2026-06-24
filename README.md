@@ -1,115 +1,48 @@
-# ctf_navigation
+# ctf_navigation - robot_real
 
-Juego de **Capture The Flag (CTF)** multi-robot con dos TurtleBot3 Waffle Pi en Gazebo (ROS Noetic).
+Rama para ejecutar Capture The Flag con dos TurtleBot3 Waffle Pi reales.
 
-Este paquete implementa una simulación autónoma y distribuida donde dos robots exploran un mapa desconocido, localizan una bandera visualmente, e inician dinámicamente un juego de atrapa la bandera con roles de portador, perseguidor e interceptor.
-
----
-
-## 🛠️ Arquitectura del Sistema
-
-El sistema es un híbrido de nodos en **C++** y scripts en **Python** coordinados mediante tópicos de ROS:
-
-### 🐍 Nodos de Control y Exploración (Python)
-- **[slam_frontier_explorer_ctf.py](file:///home/arros/catkin_ws/src/practica-final-ra-mobil/scripts/slam_frontier_explorer_ctf.py)**: El coordinador principal del juego. Implementa la máquina de estados de cada robot (`EXPLORING`, `SEEKING_FLAG`, `CHASING_CARRIER`, `RETURNING_HOME`) y el selector de fronteras basado en diagramas de Voronoi y penalizaciones por territorio para evitar redundancia en la exploración.
-- **[robot_coordinator.py](file:///home/arros/catkin_ws/src/practica-final-ra-mobil/scripts/robot_coordinator.py)**: Gestiona la prevención de colisiones inter-robot. Publica las huellas de los robots como obstáculos virtuales en una nube de puntos (`PointCloud2`) para que `move_base` los esquive en tiempo real, resolviendo bloqueos mutuos mediante prioridades temporales.
-- **[laser_obstacle_filter.py](file:///home/arros/catkin_ws/src/practica-final-ra-mobil/scripts/laser_obstacle_filter.py)**: Filtra los datos de los sensores láser (LIDAR) para eliminar reflejos internos de los propios chasis de los robots.
-
-### ⚡ Nodos de Alto Rendimiento (C++)
-- **[flag_detector_node.cpp](file:///home/arros/catkin_ws/src/practica-final-ra-mobil/src/nodes/flag_detector_node.cpp)**: Procesa el flujo de la cámara RGB de cada robot utilizando OpenCV (filtros HSV) para detectar la bandera roja en tiempo real. Cruza los píxeles de la bandera detectada con el escaneo láser más cercano para estimar la posición exacta $(x, y)$ en el mapa global.
-
----
-
-## 📂 Estructura del Proyecto
-
-```
-ctf_navigation/
-├── launch/
-│   ├── slam_multi_robot_ctf.launch  # ← Launch principal de la simulación
-│   ├── simulation.launch            # Inicialización de Gazebo con robots y bandera
-│   ├── shared_slam.launch           # GMapping individual y fusión de mapas (map_merge)
-│   ├── slam_navigation.launch       # Move_base con DWA planner y costmaps
-│   └── rviz/                        # Visualización y debug
-├── scripts/
-│   ├── slam_frontier_explorer_ctf.py # Lógica de juego, fronteras y estados
-│   ├── robot_coordinator.py          # Evasión inter-robot y prioridades
-│   └── laser_obstacle_filter.py      # Filtro de ruido del láser
-├── src/
-│   └── nodes/
-│       └── flag_detector_node.cpp    # Procesamiento visual HSV de la bandera
-├── params/                           # Configuración de Costmaps, DWA Planner y Visión
-├── worlds/                           # Entornos virtuales (.world)
-└── package.xml                       # Metadatos del paquete (Nombre oficial: ctf_navigation)
-```
-
----
-
-## ⚙️ Requisitos e Instalación
-
-Asegúrate de instalar todas las dependencias necesarias de ROS Noetic:
+El flujo principal se conserva sin cambios funcionales:
 
 ```bash
-sudo apt update
-sudo apt install \
-  ros-noetic-turtlebot3-gazebo \
-  ros-noetic-turtlebot3-msgs \
-  ros-noetic-turtlebot3-description \
-  ros-noetic-turtlebot3-navigation \
-  ros-noetic-costmap-2d \
-  ros-noetic-multirobot-map-merge \
-  ros-noetic-nav-core \
-  ros-noetic-navigation \
-  ros-noetic-gmapping \
-  ros-noetic-cv-bridge \
-  libopencv-dev
+roslaunch ctf_navigation real_multi_robot_ctf.launch
 ```
 
-Configura tu variable de entorno del robot en tu `.bashrc`:
+Para probar solo la vision de bandera en los dos robots:
+
 ```bash
-export TURTLEBOT3_MODEL=waffle_pi
-echo 'export TURTLEBOT3_MODEL=waffle_pi' >> ~/.bashrc
+roslaunch ctf_navigation real_robot_flag_vision.launch
 ```
 
----
+## Stack real conservado
 
-## 🚀 Compilación y Ejecución
+- `launch/real_multi_robot_ctf.launch`
+- `launch/real_robot_flag_vision.launch`
+- `launch/real_robot_tf.launch`
+- `launch/shared_slam.launch`
+- `launch/slam_navigation.launch`
+- `launch/map_merge_tf.launch`
+- `launch/slam_world_tf.launch`
+- `params/*_slam.yaml`
+- `params/gmapping_robot1.yaml`
+- `params/gmapping_robot2.yaml`
+- `params/vision_real.yaml`
+- `scripts/clock_drift_check.py`
+- `scripts/odom_tf_broadcaster.py`
+- `scripts/map_merge_debug.py`
+- `scripts/tf_map_merge.py`
+- `scripts/launch_config_echo.py`
+- `scripts/laser_obstacle_filter.py`
+- `scripts/robot_coordinator.py`
+- `scripts/slam_frontier_explorer_ctf.py`
+- `src/nodes/flag_detector_node.cpp`
+- `src/vision/aruco_flag_detector.cpp`
 
-### 1. Compilar el Workspace
-Asegúrate de cargar primero el entorno global de ROS:
-```bash
-source /opt/ros/noetic/setup.bash
-cd ~/catkin_ws
-catkin_make
-source devel/setup.bash
-```
+## Notas de ejecucion
 
-### 2. Lanzar la Simulación de CTF
-Para lanzar la simulación en el mapa de las **9 habitaciones** (por defecto recomendado):
-```bash
-roslaunch ctf_navigation slam_multi_robot_ctf.launch world:=nine_rooms_world
-```
-
-Para lanzarla en otros mundos disponibles (`ctf_world`, `maze_world` o `hallway_world`):
-```bash
-roslaunch ctf_navigation slam_multi_robot_ctf.launch world:=maze_world
-```
-
-### 3. Parámetros útiles al lanzar
-Puedes reposicionar la bandera roja dinámicamente desde el propio comando usando `flag_x` y `flag_y`:
-```bash
-roslaunch ctf_navigation slam_multi_robot_ctf.launch world:=nine_rooms_world flag_x:=1.5 flag_y:=-2.5
-```
-
----
-
-## 💡 Consejos de Rendimiento / Solución de Problemas
-
-La simulación ejecuta múltiples nodos complejos en paralelo (2 SLAM Gmapping, 2 costmaps locales/globales, 2 detectores visuales, etc.). Si notas lag o tirones:
-
-1. **Limpiar procesos colgados (Zombies)**:
-   Gazebo a veces no se cierra limpiamente al pulsar `Ctrl+C`. Si la simulación va muy lenta al reiniciar, ejecuta este comando para limpiar la memoria:
-   ```bash
-   killall -9 gzserver gzclient rosmaster rviz
-   ```
-2. **Cerrar la interfaz de Gazebo**:
-   La ventana física 3D de Gazebo (`gzclient`) consume una cantidad enorme de recursos de GPU/CPU. Puedes cerrarla directamente una vez iniciada la simulación y controlar todo el progreso de la exploración y el juego desde **RViz**, que es mucho más ligero y muestra toda la telemetría e intenciones de los robots.
+- Arranca antes los bringups reales de `robot1` y `robot2`.
+- Sincroniza relojes entre PCs antes de lanzar ROS.
+- Comprueba que existan `/robot1/scan`, `/robot2/scan`, `/robot1/odom`,
+  `/robot2/odom` y las camaras `cv_camera`.
+- Si el bringup ya publica `base_footprint -> base_link -> base_scan`, lanza con
+  `publish_kinematic_tf:=false`.
