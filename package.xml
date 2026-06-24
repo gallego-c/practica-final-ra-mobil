@@ -19,11 +19,9 @@
   <build_depend>actionlib_msgs</build_depend>
   <build_depend>tf2_ros</build_depend>
   <build_depend>tf2_geometry_msgs</build_depend>
-  <build_depend>nav_core</build_depend>
-  <build_depend>base_local_planner</build_depend>
   <build_depend>costmap_2d</build_depend>
-  <build_depend>pluginlib</build_depend>
   <build_depend>cv_bridge</build_depend>
+  <build_depend>rospy</build_depend>
 
   <exec_depend>roscpp</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
@@ -36,11 +34,10 @@
   <exec_depend>actionlib_msgs</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>tf2_geometry_msgs</exec_depend>
-  <exec_depend>nav_core</exec_depend>
-  <exec_depend>base_local_planner</exec_depend>
   <exec_depend>costmap_2d</exec_depend>
-  <exec_depend>pluginlib</exec_depend>
   <exec_depend>cv_bridge</exec_depend>
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>tf</exec_depend>
 
   <exec_depend>move_base</exec_depend>
   <exec_depend>amcl</exec_depend>
@@ -55,7 +52,4 @@
   <exec_depend>turtlebot3_description</exec_depend>
   <exec_depend>turtlebot3_navigation</exec_depend>
 
-  <export>
-    <nav_core plugin="${prefix}/planner_5d_plugin.xml"/>
-  </export>
 </package>

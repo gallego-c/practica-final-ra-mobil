@@ -77,6 +77,14 @@ void RobotAgent::resetFlagGoalThrottle()
   last_flag_goal_ = boost::none;
 }
 
+void RobotAgent::resetForPhaseTransition()
+{
+  search_state_ = SearchState::EXPLORING;
+  target_waypoint_ = -1;
+  resetFlagGoalThrottle();
+  cancelGoals();
+}
+
 bool RobotAgent::shouldSendFlagGoal(double fx, double fy,
                                     double min_move_m, double max_age_sec)
 {

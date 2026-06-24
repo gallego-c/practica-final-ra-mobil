@@ -1,14 +1,14 @@
-controller_frequency:  10.0
-controller_patience:   10.0
+controller_frequency:  12.0
+controller_patience:   8.0
 
-planner_frequency:     0.0
-planner_patience:      10.0
+planner_frequency:     1.5
+planner_patience:      8.0
 
-max_planning_retries:   5
+max_planning_retries:   4
 
-oscillation_timeout:    8.0
-oscillation_distance:   0.15
+oscillation_timeout:    5.0
+oscillation_distance:   0.12
 
 recovery_behavior_enabled: true
-clearing_rotation_allowed: true
+clearing_rotation_allowed: false
 conservative_reset_dist:   2.5

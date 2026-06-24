@@ -1,21 +1,41 @@
 <launch>
-  <arg name="local_planner" default="dwa"/>
   <arg name="world_frame" default="map"/>
   <arg name="merged_map_topic" default="/merged_map"/>
 
-  <!-- Connect the global world_frame (map) to each robot's map frame. 
-       This completes the TF tree: map -> robotN/map -> robotN/odom -> robotN/base_footprint -->
-  <node pkg="tf2_ros" type="static_transform_publisher"
-        name="robot1_static_map_to_map"
-        args="0 0 0 0 0 0 $(arg world_frame) robot1/map"/>
+  <arg name="robot1_x" default="0.0"/>
+  <arg name="robot1_y" default="0.0"/>
+  <arg name="robot1_yaw" default="0.0"/>
+  <arg name="robot2_x" default="0.0"/>
+  <arg name="robot2_y" default="0.0"/>
+  <arg name="robot2_yaw" default="0.0"/>
+  <arg name="move_base_delay_robot1" default="8"/>
+  <arg name="move_base_delay_robot2" default="12"/>
+  <arg name="publish_world_tf" default="true"/>
 
+  <include if="$(arg publish_world_tf)" file="$(find ctf_navigation)/launch/slam_world_tf.launch">
+    <arg name="world_frame" value="$(arg world_frame)"/>
+    <arg name="robot1_x" value="$(arg robot1_x)"/>
+    <arg name="robot1_y" value="$(arg robot1_y)"/>
+    <arg name="robot1_yaw" value="$(arg robot1_yaw)"/>
+    <arg name="robot2_x" value="$(arg robot2_x)"/>
+    <arg name="robot2_y" value="$(arg robot2_y)"/>
+    <arg name="robot2_yaw" value="$(arg robot2_yaw)"/>
+  </include>
+
+  <!-- TF chain: map -> robotN/map -> robotN/odom -> robotN/base_footprint -->
+  <!-- Bootstrap map->odom omitted: conflicts with GMapping dynamic transforms.
   <node pkg="tf2_ros" type="static_transform_publisher"
-        name="robot2_static_map_to_map"
-        args="0 0 0 0 0 0 $(arg world_frame) robot2/map"/>
+        name="robot1_bootstrap_map_to_odom"
+        args="0 0 0 0 0 0 robot1/map robot1/odom"/>
+  <node pkg="tf2_ros" type="static_transform_publisher"
+        name="robot2_bootstrap_map_to_odom"
+        args="0 0 0 0 0 0 robot2/map robot2/odom"/>
+  -->
 
   <group ns="robot1">
     <node pkg="move_base" type="move_base" name="move_base" output="screen"
-          respawn="true" respawn_delay="3">
+          respawn="true" respawn_delay="3"
+          launch-prefix="bash -c 'sleep $(arg move_base_delay_robot1); $0 $@' ">
       <remap from="odom" to="/robot1/odom"/>
       <remap from="scan" to="/robot1/scan_filtered"/>
       <remap from="cmd_vel" to="/robot1/cmd_vel_raw"/>
@@ -31,24 +51,20 @@
                 command="load" ns="local_costmap"/>
       <param name="global_costmap/robot_base_frame" value="robot1/base_footprint"/>
       <param name="local_costmap/robot_base_frame" value="robot1/base_footprint"/>
-      <param name="global_costmap/global_frame" value="robot1/map"/>
-      <param name="global_costmap/static_layer/map_topic" value="/robot1/map"/>
+      <param name="global_costmap/global_frame" value="$(arg world_frame)"/>
+      <param name="global_costmap/static_layer/map_topic" value="$(arg merged_map_topic)"/>
       <param name="local_costmap/global_frame" value="robot1/odom"/>
       <param name="local_costmap/obstacle_layer/scan/topic" value="/robot1/scan_filtered"/>
       <param name="local_costmap/obstacle_layer/other_robot/topic" value="/robot1/other_robot_cloud"/>
-      <param name="local_costmap/obstacle_layer/other_robot/sensor_frame" value="$(arg world_frame)"/>
+      <param name="local_costmap/obstacle_layer/other_robot/sensor_frame" value="robot1/odom"/>
+      <param name="global_costmap/obstacle_layer/scan/topic" value="/robot1/scan_filtered"/>
+      <param name="global_costmap/obstacle_layer/other_robot/topic" value="/robot1/other_robot_cloud"/>
+      <param name="global_costmap/obstacle_layer/other_robot/sensor_frame" value="$(arg world_frame)"/>
       <param name="base_global_planner" value="global_planner/GlobalPlanner"/>
       <rosparam file="$(find ctf_navigation)/params/planner_global_slam_nav.yaml"
                 command="load" ns="GlobalPlanner"/>
-      <param if="$(eval arg('local_planner') == '5d')"
-             name="base_local_planner" value="ctf_navigation/Planner5D"/>
-      <rosparam if="$(eval arg('local_planner') == '5d')"
-                file="$(find ctf_navigation)/params/planner_local_5d_slam.yaml"
-                command="load" ns="Planner5D"/>
-      <param unless="$(eval arg('local_planner') == '5d')"
-             name="base_local_planner" value="dwa_local_planner/DWAPlannerROS"/>
-      <rosparam unless="$(eval arg('local_planner') == '5d')"
-                file="$(find ctf_navigation)/params/planner_local_dwa_slam.yaml"
+      <param name="base_local_planner" value="dwa_local_planner/DWAPlannerROS"/>
+      <rosparam file="$(find ctf_navigation)/params/planner_local_dwa_slam.yaml"
                 command="load" ns="DWAPlannerROS"/>
     </node>
   </group>
@@ -57,7 +73,7 @@
   <group ns="robot2">
     <node pkg="move_base" type="move_base" name="move_base" output="screen"
           respawn="true" respawn_delay="3"
-          launch-prefix="bash -c 'sleep 6; $0 $@' ">
+          launch-prefix="bash -c 'sleep $(arg move_base_delay_robot2); $0 $@' ">
       <remap from="odom" to="/robot2/odom"/>
       <remap from="scan" to="/robot2/scan_filtered"/>
       <remap from="cmd_vel" to="/robot2/cmd_vel_raw"/>
@@ -73,24 +89,20 @@
                 command="load" ns="local_costmap"/>
       <param name="global_costmap/robot_base_frame" value="robot2/base_footprint"/>
       <param name="local_costmap/robot_base_frame" value="robot2/base_footprint"/>
-      <param name="global_costmap/global_frame" value="robot2/map"/>
-      <param name="global_costmap/static_layer/map_topic" value="/robot2/map"/>
+      <param name="global_costmap/global_frame" value="$(arg world_frame)"/>
+      <param name="global_costmap/static_layer/map_topic" value="$(arg merged_map_topic)"/>
       <param name="local_costmap/global_frame" value="robot2/odom"/>
       <param name="local_costmap/obstacle_layer/scan/topic" value="/robot2/scan_filtered"/>
       <param name="local_costmap/obstacle_layer/other_robot/topic" value="/robot2/other_robot_cloud"/>
-      <param name="local_costmap/obstacle_layer/other_robot/sensor_frame" value="$(arg world_frame)"/>
+      <param name="local_costmap/obstacle_layer/other_robot/sensor_frame" value="robot2/odom"/>
+      <param name="global_costmap/obstacle_layer/scan/topic" value="/robot2/scan_filtered"/>
+      <param name="global_costmap/obstacle_layer/other_robot/topic" value="/robot2/other_robot_cloud"/>
+      <param name="global_costmap/obstacle_layer/other_robot/sensor_frame" value="$(arg world_frame)"/>
       <param name="base_global_planner" value="global_planner/GlobalPlanner"/>
       <rosparam file="$(find ctf_navigation)/params/planner_global_slam_nav.yaml"
                 command="load" ns="GlobalPlanner"/>
-      <param if="$(eval arg('local_planner') == '5d')"
-             name="base_local_planner" value="ctf_navigation/Planner5D"/>
-      <rosparam if="$(eval arg('local_planner') == '5d')"
-                file="$(find ctf_navigation)/params/planner_local_5d_slam.yaml"
-                command="load" ns="Planner5D"/>
-      <param unless="$(eval arg('local_planner') == '5d')"
-             name="base_local_planner" value="dwa_local_planner/DWAPlannerROS"/>
-      <rosparam unless="$(eval arg('local_planner') == '5d')"
-                file="$(find ctf_navigation)/params/planner_local_dwa_slam.yaml"
+      <param name="base_local_planner" value="dwa_local_planner/DWAPlannerROS"/>
+      <rosparam file="$(find ctf_navigation)/params/planner_local_dwa_slam.yaml"
                 command="load" ns="DWAPlannerROS"/>
     </node>
   </group>

@@ -68,8 +68,12 @@ inline boost::optional<geometry_msgs::PoseStamped> transformPose(
 {
   try
   {
+    // Multi-PC real robots: never use the sensor header stamp for TF lookup.
+    // Camera/scan stamps often come from a different clock than the roslaunch PC.
+    geometry_msgs::PoseStamped pose_latest = pose_in;
+    pose_latest.header.stamp = ros::Time(0);
     geometry_msgs::PoseStamped out;
-    out = buffer.transform(pose_in, target_frame, ros::Duration(timeout_sec));
+    out = buffer.transform(pose_latest, target_frame, ros::Duration(timeout_sec));
     return out;
   }
   catch (const tf2::TransformException& ex)

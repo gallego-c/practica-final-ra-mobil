@@ -6,14 +6,11 @@ add_compile_options(-std=c++11)
 find_package(catkin REQUIRED COMPONENTS
   actionlib
   actionlib_msgs
-  base_local_planner
   costmap_2d
   cv_bridge
   geometry_msgs
   move_base_msgs
-  nav_core
   nav_msgs
-  pluginlib
   roscpp
   sensor_msgs
   std_msgs
@@ -26,18 +23,14 @@ find_package(OpenCV REQUIRED)
 
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES ctf_navigation
   CATKIN_DEPENDS
     actionlib
     actionlib_msgs
-    base_local_planner
     costmap_2d
     cv_bridge
     geometry_msgs
     move_base_msgs
-    nav_core
     nav_msgs
-    pluginlib
     roscpp
     sensor_msgs
     std_msgs
@@ -52,12 +45,10 @@ include_directories(
   ${OpenCV_INCLUDE_DIRS}
 )
 
-# ── Librería del planificador local 5D (plugin move_base) ─────────────────────
-add_library(ctf_navigation src/planner_5d.cpp)
-target_link_libraries(ctf_navigation ${catkin_LIBRARIES})
-
-# ── Librería de visión (detección roja) ───────────────────────────────────────
-add_library(ctf_vision src/vision/red_flag_detector.cpp)
+# ── Librería de visión (detección ArUco/AprilTag) ─────────────────────────────
+add_library(ctf_vision
+  src/vision/aruco_flag_detector.cpp
+)
 target_link_libraries(ctf_vision ${OpenCV_LIBS})
 
 # ── Librería de juego (exploración + agente) ──────────────────────────────────
@@ -82,7 +73,6 @@ target_link_libraries(robot_obstacle_publisher_node ${catkin_LIBRARIES})
 
 # ── Instalación ───────────────────────────────────────────────────────────────
 install(TARGETS
-  ctf_navigation
   ctf_vision
   ctf_game
   ctf_demo_node
@@ -99,17 +89,22 @@ install(DIRECTORY include/${PROJECT_NAME}/
   FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
 )
 
-install(FILES planner_5d_plugin.xml
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
-)
-
 install(DIRECTORY launch params rviz worlds models maps
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
 
-# SLAM flow scripts (frontier explorer + optional Python obstacle publisher)
+# SLAM / CTF Python nodes
 catkin_install_python(PROGRAMS
+  scripts/clock_drift_check.py
+  scripts/odom_tf_broadcaster.py
+  scripts/map_merge_debug.py
+  scripts/tf_map_merge.py
+  scripts/launch_config_echo.py
+  scripts/laser_obstacle_filter.py
+  scripts/robot_coordinator.py
   scripts/robot_obstacle_publisher.py
   scripts/slam_frontier_explorer.py
+  scripts/slam_frontier_explorer_ctf.py
+  scripts/slam_frontier_explorer_single.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

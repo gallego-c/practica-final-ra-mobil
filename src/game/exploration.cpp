@@ -23,6 +23,25 @@ void ExplorationPlanner::buildFromMap(const nav_msgs::OccupancyGrid& grid)
   {
     return;
   }
+  updateFromMap(grid);
+}
+
+void ExplorationPlanner::updateFromMap(const nav_msgs::OccupancyGrid& grid)
+{
+  if (grid.info.resolution <= 0.0 || grid.info.width == 0 || grid.info.height == 0 ||
+      grid.data.empty())
+  {
+    return;
+  }
+
+  std::vector<Waypoint> old_visited;
+  for (const int index : visited_)
+  {
+    if (index >= 0 && static_cast<size_t>(index) < waypoints_.size())
+    {
+      old_visited.push_back(waypoints_[static_cast<size_t>(index)]);
+    }
+  }
 
   const double res = grid.info.resolution;
   const double ox = grid.info.origin.position.x;
@@ -41,6 +60,14 @@ void ExplorationPlanner::buildFromMap(const nav_msgs::OccupancyGrid& grid)
     return grid.data[cy * w + cx];
   };
 
+  auto isUnknown = [&](int cx, int cy) -> bool {
+    if (cx < 0 || cy < 0 || cx >= w || cy >= h)
+    {
+      return false;
+    }
+    return grid.data[cy * w + cx] < 0;
+  };
+
   auto isClear = [&](int cx, int cy) -> bool {
     for (int dy = -clear_cells; dy <= clear_cells; ++dy)
     {
@@ -56,6 +83,24 @@ void ExplorationPlanner::buildFromMap(const nav_msgs::OccupancyGrid& grid)
     return true;
   };
 
+  const int frontier_window_cells = std::max(clear_cells + 1, step_cells / 2);
+  auto isNearUnknown = [&](int cx, int cy) -> bool {
+    for (int dy = -frontier_window_cells; dy <= frontier_window_cells; ++dy)
+    {
+      for (int dx = -frontier_window_cells; dx <= frontier_window_cells; ++dx)
+      {
+        if (isUnknown(cx + dx, cy + dy))
+        {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  std::vector<Waypoint> coverage_waypoints;
+  std::vector<Waypoint> frontier_waypoints;
+
   for (int cy = clear_cells; cy < h - clear_cells; cy += step_cells)
   {
     for (int cx = clear_cells; cx < w - clear_cells; cx += step_cells)
@@ -64,7 +109,29 @@ void ExplorationPlanner::buildFromMap(const nav_msgs::OccupancyGrid& grid)
       {
         const double wx = ox + (cx + 0.5) * res;
         const double wy = oy + (cy + 0.5) * res;
-        waypoints_.emplace_back(wx, wy);
+        coverage_waypoints.emplace_back(wx, wy);
+        if (isNearUnknown(cx, cy))
+        {
+          frontier_waypoints.emplace_back(wx, wy);
+        }
+      }
+    }
+  }
+
+  waypoints_ = frontier_waypoints.empty() ? coverage_waypoints : frontier_waypoints;
+  visited_.clear();
+
+  const double visited_match_dist = std::max(0.5 * step_m_, clearance_m_);
+  for (size_t i = 0; i < waypoints_.size(); ++i)
+  {
+    for (const auto& visited_wp : old_visited)
+    {
+      if (geometry::distance2D(waypoints_[i].first, waypoints_[i].second,
+                               visited_wp.first, visited_wp.second) <=
+          visited_match_dist)
+      {
+        visited_.insert(static_cast<int>(i));
+        break;
       }
     }
   }

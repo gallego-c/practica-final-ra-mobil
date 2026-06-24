@@ -1,0 +1,26 @@
+# Parámetros del flag_detector en ROBOT REAL (TurtleBot3 Waffle Pi).
+# El bringup publica cv_camera/image_raw[/compressed], NO camera/rgb/... (Gazebo).
+camera_topic: ""
+compressed_camera_topic: "cv_camera/image_raw/compressed"
+scan_topic: "scan"
+
+base_frame: "base_footprint"
+map_frame: "map"
+
+# FOV horizontal cámara Waffle Pi (~62.2°).
+horizontal_fov: 1.085595
+
+max_detection_distance: 5.0
+range_window: 0.25
+
+# Robot real: no filtrar por latencia de red / reloj entre PCs.
+max_image_age: 0
+drop_delayed_frames: false
+# Suaviza parpadeos JPEG/movimiento: no publicar flag_found=false al primer frame fallido.
+flag_hold_sec: 2.0
+
+# ─── AprilTag 36h11 (marcador físico id=3) ───────────────────────────────
+aruco_marker_id: 3
+aruco_dictionary: 20       # DICT_APRILTAG_36h11
+
+publish_debug: true

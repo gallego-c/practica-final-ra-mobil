@@ -11,10 +11,7 @@
   <arg name="robot2_init_y" default="0.0"/>
   <arg name="robot2_init_yaw" default="0.0"/>
 
-  <!-- Initial map poses for multirobot_map_merge. In this Gazebo setup the
-       TurtleBot3 odometry already carries the spawn offset, so the per-robot
-       gmapping maps are already in a common coordinate convention. Keep these
-       at zero unless you confirm the individual maps are local to each robot. -->
+  <!-- Duplicated here so map_merge always sees spawn poses (Gazebo overrides to 0). -->
   <param name="/robot1/map_merge/init_pose_x" value="$(arg robot1_init_x)"/>
   <param name="/robot1/map_merge/init_pose_y" value="$(arg robot1_init_y)"/>
   <param name="/robot1/map_merge/init_pose_z" value="0.0"/>
@@ -26,7 +23,8 @@
   <param name="/robot2/map_merge/init_pose_yaw" value="$(arg robot2_init_yaw)"/>
 
   <node pkg="multirobot_map_merge" type="map_merge"
-        name="map_merge" output="screen">
+        name="map_merge" output="screen"
+        launch-prefix="bash -c 'sleep 2; $0 $@' ">
     <param name="robot_map_topic" value="map"/>
     <param name="robot_namespace" value="robot"/>
     <param name="merged_map_topic" value="$(arg merged_map_topic)"/>
@@ -35,7 +33,8 @@
     <param name="known_init_pose" value="true"/>
     <param name="merging_rate" value="0.5"/>
     <param name="discovery_rate" value="1.0"/>
-    <param name="estimation_rate" value="0.1"/>
+    <!-- estimation_* only used when known_init_poses=false -->
+    <param name="estimation_rate" value="0.0"/>
     <param name="estimation_confidence" value="1.0"/>
   </node>
 </launch>

@@ -69,7 +69,12 @@ class SlamFrontierExplorerCtf:
         self.min_coverage = float(rospy.get_param('~min_coverage', 0.72))
         self.gain_scale = float(rospy.get_param('~gain_scale', 2.0))
         self.voronoi_margin = float(rospy.get_param('~voronoi_margin', 0.25))
+        self.separation_weight = float(rospy.get_param('~separation_weight', 2.0))
+        self.flag_bias_weight = float(rospy.get_param('~flag_bias_weight', 1.0))
+        self.territory_penalty = float(rospy.get_param('~territory_penalty', 4.0))
+        self.frontier_claim_sec = float(rospy.get_param('~frontier_claim_sec', 50.0))
         self.min_goal_clearance = float(rospy.get_param('~min_goal_clearance', 0.15))
+        self.robot_radius = float(rospy.get_param('~robot_radius', 0.28))
         self.progress_timeout = float(rospy.get_param('~progress_timeout', 15.0))
         self.min_progress_distance = float(rospy.get_param('~min_progress_distance', 0.15))
         self.startup_delay = float(rospy.get_param('~startup_delay', 30.0))
@@ -77,22 +82,111 @@ class SlamFrontierExplorerCtf:
         self.idle_frontier_cycles = int(rospy.get_param('~idle_frontier_cycles', 8))
 
         # CTF parameters
-        self.flag_capture_distance = float(rospy.get_param('~flag_capture_distance', 0.45))
         self.flag_standoff_distance = float(rospy.get_param('~flag_standoff_distance', 0.20))
+        self.flag_capture_margin = float(rospy.get_param('~flag_capture_margin', 0.10))
+        self.flag_collision_radius = float(
+            rospy.get_param('~flag_collision_radius', 0.12))
+        self.flag_approach_stall_sec = float(
+            rospy.get_param('~flag_approach_stall_sec', 5.0))
+        self.flag_approach_nudge_sec = float(
+            rospy.get_param('~flag_approach_nudge_sec', 2.5))
+        self.flag_approach_max_distance = float(
+            rospy.get_param('~flag_approach_max_distance', 0.85))
+        self.flag_approach_flank_step = float(
+            rospy.get_param('~flag_approach_flank_step', 0.50))
+        self.flag_approach_step = float(
+            rospy.get_param('~flag_approach_step', 1.20))
+        self.flag_approach_backoff_max = float(
+            rospy.get_param('~flag_approach_backoff_max', 1.10))
+        self.flag_approach_detour_step = float(
+            rospy.get_param('~flag_approach_detour_step', 1.0))
+        self.flag_approach_detour_after = int(
+            rospy.get_param('~flag_approach_detour_after', 3))
+        self.flag_capture_min_pursuit_sec = float(
+            rospy.get_param('~flag_capture_min_pursuit_sec', 4.0))
+        self.flag_capture_min_progress = float(
+            rospy.get_param('~flag_capture_min_progress', 0.20))
+        self._min_reach_distance = (
+            self.flag_collision_radius
+            + self.robot_radius * 0.40
+            + 0.05)
+        # Capture range: standoff (security) + clearance (maneuverability) + margin
+        if rospy.has_param('~flag_capture_distance'):
+            self.flag_capture_distance = float(rospy.get_param('~flag_capture_distance'))
+        else:
+            self.flag_capture_distance = max(
+                self._min_reach_distance + self.flag_capture_margin,
+                self.flag_standoff_distance
+                + self.min_goal_clearance
+                + self.flag_capture_margin)
         self.catch_distance = float(rospy.get_param('~catch_distance', 0.65))
         self.chase_goal_period = float(rospy.get_param('~chase_goal_period', 1.0))
         self.capture_pause_sec = float(rospy.get_param('~capture_pause_sec', 3.0))
-        self.flag_memory_timeout = float(rospy.get_param('~flag_memory_timeout', 5.0))
+        self.flag_memory_timeout = float(rospy.get_param('~flag_memory_timeout', 120.0))
+        self.flag_support_standoff = float(
+            rospy.get_param('~flag_support_standoff', 2.20))
+        self.flag_global_plan_min_dist = float(
+            rospy.get_param('~flag_global_plan_min_dist', 1.50))
+        self.waypoint_reached_dist = float(rospy.get_param('~waypoint_reached_dist', 0.55))
+        self.chase_flag_clearance = float(rospy.get_param('~chase_flag_clearance', 0.75))
+        self.chase_clearance_reached_dist = float(
+            rospy.get_param('~chase_clearance_reached_dist', 0.20))
+        self.chase_clearance_min_travel = float(
+            rospy.get_param('~chase_clearance_min_travel', 0.25))
+        self.chase_home_min_travel_from_capture = float(
+            rospy.get_param('~chase_home_min_travel_from_capture', 0.50))
+        self.intercept_enabled = bool(rospy.get_param('~intercept_enabled', True))
+        self.intercept_direct_chase_distance = float(
+            rospy.get_param('~intercept_direct_chase_distance', 1.25))
+        self.intercept_arrival_margin = float(
+            rospy.get_param('~intercept_arrival_margin', 0.30))
+        self.intercept_step = float(rospy.get_param('~intercept_step', 0.25))
+        self.intercept_min_lead = float(rospy.get_param('~intercept_min_lead', 1.0))
+        self.intercept_carrier_move_threshold = float(
+            rospy.get_param('~intercept_carrier_move_threshold', 1.25))
+        self.carrier_home_resend_cooldown = float(
+            rospy.get_param('~carrier_home_resend_cooldown', 3.0))
+        self.carrier_home_stuck_timeout = float(
+            rospy.get_param('~carrier_home_stuck_timeout', 6.0))
+        self.carrier_home_progress_threshold = float(
+            rospy.get_param('~carrier_home_progress_threshold', 0.10))
+        self.direct_chase_refresh_sec = float(
+            rospy.get_param('~direct_chase_refresh_sec', 2.0))
+        self.direct_chase_carrier_move = float(
+            rospy.get_param('~direct_chase_carrier_move', 0.25))
 
-        self.robots = rospy.get_param('~robots', [
-            {'ns': 'robot1', 'base_frame': 'robot1/base_footprint'},
-            {'ns': 'robot2', 'base_frame': 'robot2/base_footprint'},
-        ])
+        # Logging: verbose (all) | brief (CTF timeline only — phases, goals, capture/chase)
+        self.log_mode = str(rospy.get_param('~log_mode', 'verbose')).lower()
+        self._brief_last_phase = {'robot1': None, 'robot2': None}
+        self._brief_last_game_state = None
+        self._brief_last_goal_sig = {}
+        self._brief_last_chase_sig = {}
 
         # Game states: 'EXPLORING', 'CAPTURED', 'CHASE', 'FINISHED'
         self.game_state = 'EXPLORING'
         self.carrier_ns = None
         self.pursuer_ns = None
+        self._capturer_ns = None
+        self._capture_lock = threading.Lock()
+        self._chase_initialized = False
+        self._carrier_on_home_goal = False
+        self._chase_started = 0.0
+        self._clearance_goal = None
+        self._has_intercept_goal = False
+        self._intercept_anchor = None
+        self._pursuer_was_succeeded = False
+        self._last_carrier_home_resend = 0.0
+        self._last_direct_chase_sent = 0.0
+        self._last_carrier_progress_time = 0.0
+        self._last_carrier_progress_home_dist = -1.0
+        self._last_pursuer_progress_dist = -1.0
+        self._last_pursuer_progress_time = 0.0
+        self._capture_carrier_pose = None
+
+        self.robots = rospy.get_param('~robots', [
+            {'ns': 'robot1', 'base_frame': 'robot1/base_footprint'},
+            {'ns': 'robot2', 'base_frame': 'robot2/base_footprint'},
+        ])
 
         # Flag estimate and detection status
         self.flag_found = {'robot1': False, 'robot2': False}
@@ -100,10 +194,25 @@ class SlamFrontierExplorerCtf:
         self.flag_estimate_time = {'robot1': 0.0, 'robot2': 0.0}
         self.last_known_flag_xy = None
         self.flag_lock = threading.Lock()
+        self._close_to_flag_since = {}
+        self.flag_true_xy = rospy.get_param('/ctf_navigation/spawns/flag', None)
+
+        # Per-robot search sub-state during EXPLORING phase:
+        # EXPLORING | PURSUING_FLAG (own camera, can capture) | APPROACHING_SHARED (teammate estimate)
+        self._search_state = {'robot1': 'EXPLORING', 'robot2': 'EXPLORING'}
+        self._state_lock = threading.Lock()
 
         # Goal throttling
         self._last_flag_goal = {}
         self._last_flag_goal_time = {}
+        self._pursuit_start_time = {}
+        self._pursuit_closest_dist = {}
+        self._pursuit_last_d_flag = {}
+        self._pursuit_last_progress_time = {}
+        self._pursuit_last_nudge_time = {}
+        self._pursuit_stuck_count = {}
+        self._pursuit_start_dist = {}
+        self._flag_visible_since = {}
 
         # Robot homes
         self.homes = {
@@ -113,18 +222,29 @@ class SlamFrontierExplorerCtf:
 
         self._map = None
         self._map_lock = threading.Lock()
+        self._robot_maps = {'robot1': None, 'robot2': None}
+        self._robot_map_lock = threading.Lock()
         self._stop = threading.Event()
         self._blacklist = {}  # (wx, wy) -> expiry monotonic time
         self._blacklist_lock = threading.Lock()
+        self._frontier_claims = {}  # (wx, wy) -> (owner_ns, expiry monotonic time)
+        self._frontier_claim_lock = threading.Lock()
         self._stats_lock = threading.Lock()
         self._idle_cycles = 0
         self._last_coverage = 0.0
 
         # Subscriptions
         rospy.Subscriber(self.map_topic, OccupancyGrid, self._map_cb, queue_size=1)
+        for cfg in self.robots:
+            ns = cfg['ns']
+            rospy.Subscriber(
+                '/' + ns + '/map', OccupancyGrid, self._robot_map_cb,
+                callback_args=ns, queue_size=1)
         self._done_pub = rospy.Publisher('/slam_exploration/complete', Bool, queue_size=1, latch=True)
         self._flag_captured_pub = rospy.Publisher('/ctf/flag_captured', Bool, queue_size=1, latch=True)
         self._marker_pub = rospy.Publisher('/ctf/markers', MarkerArray, queue_size=1, latch=True)
+        self._capture_phase_pub = rospy.Publisher('/ctf/capture_phase', Bool, queue_size=1, latch=True)
+        self._capture_phase_pub.publish(Bool(data=False))
 
         self._tf_buffer = tf2_ros.Buffer()
         tf2_ros.TransformListener(self._tf_buffer)
@@ -137,7 +257,7 @@ class SlamFrontierExplorerCtf:
         for cfg in self.robots:
             ns = cfg['ns']
             self._clients[ns] = actionlib.SimpleActionClient('/' + ns + '/move_base', MoveBaseAction)
-            self._cmd_pubs[ns] = rospy.Publisher('/' + ns + '/cmd_vel', Twist, queue_size=1)
+            self._cmd_pubs[ns] = rospy.Publisher('/' + ns + '/cmd_vel_raw', Twist, queue_size=1)
             
             # Subscribe to flag detectors (topic: /robotN/flag_detector/...)
             self._flag_found_subs[ns] = rospy.Subscriber(
@@ -150,9 +270,25 @@ class SlamFrontierExplorerCtf:
         if not self._wait_for_all_move_base():
             raise rospy.ROSException('move_base not ready for all robots')
 
+        # Clear any transient flag detections from spawning
+        with self.flag_lock:
+            for ns in ('robot1', 'robot2'):
+                self.flag_estimate[ns] = None
+                self.flag_estimate_time[ns] = 0.0
+                self.flag_found[ns] = False
+                self._flag_visible_since.pop(ns, None)
+
         # Publish initial capture state (False)
         self._flag_captured_pub.publish(Bool(data=False))
-        rospy.loginfo('SlamFrontierExplorerCtf: initialized and ready.')
+        rospy.loginfo(
+            'SlamFrontierExplorerCtf: flag_capture_distance=%.2f m '
+            '(standoff=%.2f + clearance=%.2f + margin=%.2f)',
+            self.flag_capture_distance, self.flag_standoff_distance,
+            self.min_goal_clearance, self.flag_capture_margin)
+        if self._is_brief():
+            self._log_event('brief logging — phases, goals, capture/chase only')
+        else:
+            rospy.loginfo('SlamFrontierExplorerCtf: initialized (log_mode=verbose).')
 
     def _wait_for_all_move_base(self):
         deadline = rospy.Time.now() + rospy.Duration(self.move_base_timeout)
@@ -167,39 +303,376 @@ class SlamFrontierExplorerCtf:
         return not pending
 
     def _flag_found_cb(self, msg, ns):
+        now = time.monotonic()
         with self.flag_lock:
+            if msg.data:
+                if not self.flag_found.get(ns, False):
+                    self._flag_visible_since[ns] = now
+            else:
+                self._flag_visible_since.pop(ns, None)
             self.flag_found[ns] = msg.data
+
+    def _flag_visible_duration(self, ns):
+        with self.flag_lock:
+            if not self.flag_found.get(ns, False):
+                return 0.0
+            start = self._flag_visible_since.get(ns)
+            if start is None:
+                return 0.0
+            return time.monotonic() - start
 
     def _flag_estimate_cb(self, msg, ns):
         with self.flag_lock:
             self.flag_estimate[ns] = (msg.pose.position.x, msg.pose.position.y)
             self.flag_estimate_time[ns] = rospy.Time.now().to_sec()
-            self.last_known_flag_xy = (msg.pose.position.x, msg.pose.position.y)
+            self.last_known_flag_xy = self.flag_estimate[ns]
+
+    def _is_spawn_false_positive_estimate(self, ns, flag_xy):
+        """Vision+LIDAR often places the flag on the robot's own home at startup."""
+        home = self.homes.get(ns, (0.0, 0.0, 0.0))
+        if math.hypot(flag_xy[0] - home[0], flag_xy[1] - home[1]) >= 0.40:
+            return False
+        pose = self._get_robot_pose(ns + '/base_footprint')
+        if pose is None:
+            return False
+        return (math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
+                <= self.flag_capture_distance)
+
+    def _has_fresh_flag_estimate(self, ns):
+        """Fresh vision estimate for this robot (same logic as RobotAgent::hasFreshFlagEstimate)."""
+        with self.flag_lock:
+            if self.flag_estimate[ns] is None:
+                return False, None
+            age = rospy.Time.now().to_sec() - self.flag_estimate_time[ns]
+            if age > self.flag_memory_timeout:
+                return False, None
+            xy = self.flag_estimate[ns]
+        if self._is_spawn_false_positive_estimate(ns, xy):
+            return False, None
+        return True, xy
 
     def _get_fresh_flag_estimate(self, ns):
+        """Own estimate if fresh, otherwise teammate's (shared flag location)."""
+        has_own, own_est = self._has_fresh_flag_estimate(ns)
+        if has_own:
+            return True, own_est
+
         with self.flag_lock:
-            # Check own estimate first
-            if self.flag_estimate[ns] is not None:
-                age = rospy.Time.now().to_sec() - self.flag_estimate_time[ns]
-                if age <= self.flag_memory_timeout:
-                    return True, self.flag_estimate[ns]
-            
-            # Check other robot's estimate to share info competitively
             other_ns = 'robot2' if ns == 'robot1' else 'robot1'
             if self.flag_estimate[other_ns] is not None:
                 age_other = rospy.Time.now().to_sec() - self.flag_estimate_time[other_ns]
                 if age_other <= self.flag_memory_timeout:
                     return True, self.flag_estimate[other_ns]
-            
             return False, None
+
+    def _flag_estimate_source(self, ns):
+        """Return 'own', 'teammate', or None."""
+        has_own, _ = self._has_fresh_flag_estimate(ns)
+        if has_own:
+            return 'own'
+        has_shared, _ = self._get_fresh_flag_estimate(ns)
+        if has_shared:
+            return 'teammate'
+        return None
+
+    def _clear_pursuit_tracking(self, ns):
+        self._pursuit_start_time.pop(ns, None)
+        self._pursuit_closest_dist.pop(ns, None)
+        self._pursuit_last_d_flag.pop(ns, None)
+        self._pursuit_last_progress_time.pop(ns, None)
+        self._pursuit_last_nudge_time.pop(ns, None)
+        self._pursuit_stuck_count.pop(ns, None)
+        self._pursuit_start_dist.pop(ns, None)
+        self._last_flag_goal.pop(ns, None)
+        self._last_flag_goal_time.pop(ns, None)
+
+    def _begin_flag_navigation(self, ns, flag_xy):
+        self._pursuit_start_time[ns] = time.monotonic()
+        self._pursuit_last_progress_time[ns] = time.monotonic()
+        self._pursuit_last_nudge_time.pop(ns, None)
+        self._pursuit_stuck_count[ns] = 0
+        pose = self._get_robot_pose(ns + '/base_footprint')
+        if pose is not None and flag_xy is not None:
+            d0 = math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
+            self._pursuit_start_dist[ns] = d0
+            self._pursuit_closest_dist[ns] = d0
+            self._pursuit_last_d_flag[ns] = d0
+
+    # ---- Logging helpers (log_mode:=brief) ----
+
+    def _is_brief(self):
+        return self.log_mode == 'brief'
+
+    def _log_event(self, msg, *args):
+        if self._is_brief():
+            rospy.loginfo('[CTF] ' + msg, *args)
+
+    def _log_banner(self, msg, *args):
+        """High-visibility milestone (capture, win) — always printed."""
+        rospy.logwarn('[CTF] ' + msg, *args)
+
+    def _log_warn_event(self, msg, *args):
+        if self._is_brief():
+            rospy.logwarn('[CTF] ' + msg, *args)
+        else:
+            rospy.logwarn('[CTF] ' + msg, *args)
+
+    def _log_verbose(self, msg, *args, **kwargs):
+        if not self._is_brief():
+            rospy.loginfo(msg, *args, **kwargs)
+
+    def _log_verbose_warn(self, msg, *args, **kwargs):
+        if not self._is_brief():
+            rospy.logwarn(msg, *args, **kwargs)
+
+    _PHASE_SHORT = {
+        'EXPLORING': 'EXPLORE',
+        'PURSUING_FLAG': 'PURSUE',
+        'APPROACHING_SHARED': 'SHARED',
+        'IDLE': 'IDLE',
+    }
+
+    def _log_robot_phase(self, ns, phase, detail=''):
+        if self._brief_last_phase.get(ns) == phase:
+            return
+        self._brief_last_phase[ns] = phase
+        short = self._PHASE_SHORT.get(phase, phase)
+        if self._is_brief():
+            self._log_event('%s %s', ns, short)
+        elif detail:
+            rospy.loginfo('CTF: %s -> %s (%s)', ns, phase, detail)
+        else:
+            rospy.loginfo('CTF: %s -> %s', ns, phase)
+
+    def _log_game_phase(self, state, detail=''):
+        key = (state, detail)
+        if self._brief_last_game_state == key:
+            return
+        self._brief_last_game_state = key
+        if self._is_brief():
+            if detail:
+                self._log_event('GAME %s | %s', state, detail)
+            else:
+                self._log_event('GAME %s', state)
+        elif detail:
+            rospy.loginfo('CTF: GAME -> %s | %s', state, detail)
+        else:
+            rospy.loginfo('CTF: GAME -> %s', state)
+
+    def _log_nav_goal(self, ns, role, mode, gx, gy, dist=None):
+        """role: PURSUE | SHARED | carrier | pursuer | explore"""
+        sig = (ns, role, mode, round(gx, 1), round(gy, 1))
+        if self._is_brief():
+            if mode in ('direct', 'step', 'shared-direct', 'shared-step') and (
+                    sig == self._brief_last_goal_sig.get(ns)):
+                return
+            self._brief_last_goal_sig[ns] = sig
+            if dist is not None:
+                self._log_event(
+                    'GOAL %s %s %s (%.1f, %.1f) d=%.1fm',
+                    ns, role, mode, gx, gy, dist)
+            else:
+                self._log_event(
+                    'GOAL %s %s %s (%.1f, %.1f)', ns, role, mode, gx, gy)
+        else:
+            if dist is not None:
+                rospy.loginfo(
+                    'GOAL %s %s %s (%.2f, %.2f) d=%.2fm',
+                    ns, role, mode, gx, gy, dist)
+            else:
+                rospy.loginfo(
+                    'GOAL %s %s %s (%.2f, %.2f)', ns, role, mode, gx, gy)
+
+    def _log_flag_goal(self, ns, tag, mode, d_flag, gx, gy, flag_xy,
+                       mb_state, stuck=0, start_dist=0.0, closest=0.0):
+        role = 'SHARED' if tag == 'APPROACH_SHARED' else 'PURSUE'
+        if self._is_brief():
+            self._log_nav_goal(ns, role, mode, gx, gy, dist=d_flag)
+        else:
+            rospy.loginfo(
+                'CTF FLAG [%s]: %s goal=(%.2f, %.2f) flag=(%.2f, %.2f) '
+                'dist=%.2f m mode=%s stuck=%d state=%d start=%.2f closest=%.2f',
+                tag, ns, gx, gy, flag_xy[0], flag_xy[1], d_flag, mode, stuck,
+                mb_state, start_dist, closest)
+
+    def _log_chase_goal(self, role, ns, tag, wx, wy):
+        sig = (role, ns, tag, round(wx, 1), round(wy, 1))
+        if self._is_brief():
+            if sig == self._brief_last_chase_sig.get(ns):
+                return
+            self._brief_last_chase_sig[ns] = sig
+            self._log_nav_goal(ns, role, tag, wx, wy)
+        elif role == 'carrier':
+            home = self.homes.get(ns, (0, 0, 0))
+            rospy.loginfo(
+                'CHASE carrier=%s [%s] -> (%.2f, %.2f) home=(%.2f, %.2f)',
+                ns, tag, wx, wy, home[0], home[1])
+        else:
+            rospy.loginfo(
+                'CHASE pursuer=%s [%s] -> (%.2f, %.2f) chasing %s',
+                ns, tag, wx, wy, self.carrier_ns)
+
+    def _log_capture(self, ns, flag_xy, d_flag):
+        self._log_banner(
+            '=== FLAG CAPTURED by %s  dist=%.2fm  flag=(%.1f, %.1f) ===',
+            ns, d_flag, flag_xy[0], flag_xy[1])
+        if not self._is_brief():
+            rospy.loginfo(
+                'CTF CAPTURE: %s at (%.2f, %.2f) distance=%.2f m',
+                ns, flag_xy[0], flag_xy[1], d_flag)
+
+    def _update_search_flag_states(self):
+        """Flag location is shared via _get_fresh_flag_estimate (teammate estimate).
+
+        - PURSUING_FLAG: this robot sees the flag with its own camera → go capture.
+        - APPROACHING_SHARED: teammate shared the location → navigate there to be
+          close enough to intercept the carrier after capture.
+        - EXPLORING: no flag knowledge yet.
+        """
+        with self._state_lock:
+            for ns in ('robot1', 'robot2'):
+                if self._search_state.get(ns) == 'IDLE':
+                    continue
+                has_own, own_xy = self._has_fresh_flag_estimate(ns)
+                source = self._flag_estimate_source(ns)
+                current = self._search_state[ns]
+
+                if has_own:
+                    if current != 'PURSUING_FLAG':
+                        self._log_robot_phase(ns, 'PURSUING_FLAG', 'own camera')
+                        self._search_state[ns] = 'PURSUING_FLAG'
+                        self._begin_flag_navigation(ns, own_xy)
+                        self._clients[ns].cancel_all_goals()
+                elif source == 'teammate':
+                    _, shared_xy = self._get_fresh_flag_estimate(ns)
+                    if shared_xy is None:
+                        continue
+                    if current != 'APPROACHING_SHARED':
+                        self._log_robot_phase(
+                            ns, 'APPROACHING_SHARED',
+                            'flag (%.1f, %.1f)' % (shared_xy[0], shared_xy[1]))
+                        self._search_state[ns] = 'APPROACHING_SHARED'
+                        self._begin_flag_navigation(ns, shared_xy)
+                        self._clients[ns].cancel_all_goals()
+                elif current != 'EXPLORING':
+                    self._log_robot_phase(ns, 'EXPLORING', 'flag estimate lost')
+                    self._search_state[ns] = 'EXPLORING'
+                    self._clear_pursuit_tracking(ns)
+                    self._clients[ns].cancel_all_goals()
+
+        in_cap = False
+        with self._state_lock:
+            for ns in ('robot1', 'robot2'):
+                if self._search_state.get(ns) in ('PURSUING_FLAG', 'APPROACHING_SHARED'):
+                    in_cap = True
+        self._capture_phase_pub.publish(Bool(data=in_cap))
+
+    def _find_first_capture_candidate(self):
+        """Capture only when close enough (map distance) AND camera sees the flag."""
+        candidates = []
+        now = time.monotonic()
+        for ns in ('robot1', 'robot2'):
+            with self._state_lock:
+                if self._search_state.get(ns) != 'PURSUING_FLAG':
+                    self._close_to_flag_since.pop(ns, None)
+                    continue
+
+            has_own, flag_xy = self._has_fresh_flag_estimate(ns)
+            if not has_own or flag_xy is None:
+                self._close_to_flag_since.pop(ns, None)
+                continue
+
+            with self.flag_lock:
+                if not self.flag_found.get(ns, False):
+                    self._close_to_flag_since.pop(ns, None)
+                    continue
+                age = rospy.Time.now().to_sec() - self.flag_estimate_time[ns]
+            if age > 2.0:
+                self._close_to_flag_since.pop(ns, None)
+                continue
+
+            pose = self._get_robot_pose(ns + '/base_footprint')
+            if pose is None:
+                self._close_to_flag_since.pop(ns, None)
+                continue
+
+            d_flag = math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
+            if d_flag > self.flag_capture_distance:
+                self._close_to_flag_since.pop(ns, None)
+                continue
+
+            pursuit_start = self._pursuit_start_time.get(ns)
+            if pursuit_start is None:
+                self._close_to_flag_since.pop(ns, None)
+                continue
+            pursuit_duration = now - pursuit_start
+            if pursuit_duration < self.flag_capture_min_pursuit_sec:
+                self._log_verbose(
+                    '%s: close to flag but pursuit only %.1f/%.1f s',
+                    ns, pursuit_duration, self.flag_capture_min_pursuit_sec)
+                continue
+
+            start_dist = self._pursuit_start_dist.get(ns, d_flag)
+            closest = self._pursuit_closest_dist.get(ns, d_flag)
+            progress = start_dist - closest
+            if progress < self.flag_capture_min_progress:
+                self._log_verbose(
+                    '%s: no approach progress (%.2f/%.2f m); start=%.2f closest=%.2f',
+                    ns, progress, self.flag_capture_min_progress,
+                    start_dist, closest)
+                self._close_to_flag_since.pop(ns, None)
+                continue
+
+            if self._is_spawn_false_positive_estimate(ns, flag_xy):
+                self._close_to_flag_since.pop(ns, None)
+                continue
+
+            if self.flag_true_xy is not None:
+                d_true = math.hypot(pose[0] - self.flag_true_xy[0], pose[1] - self.flag_true_xy[1])
+                self._log_verbose(
+                    '%s: close to flag estimate? d_flag=%.2f, true_dist=%.2f',
+                    ns, d_flag, d_true)
+                if d_true > 1.5:  # Allow up to 1.5m of SLAM drift
+                    self._close_to_flag_since.pop(ns, None)
+                    continue
+
+            # Debounce: require flag visible briefly (not capture from one noisy frame)
+            if self._flag_visible_duration(ns) < 0.25:
+                continue
+
+            # Enforce that the robot must be within capture distance for at least 2.0 seconds
+            if ns not in self._close_to_flag_since:
+                self._close_to_flag_since[ns] = now
+
+            close_duration = now - self._close_to_flag_since[ns]
+            if close_duration < 2.0:
+                self._log_verbose(
+                    '%s: close to flag (dist=%.2f m) for %.2f/2.0 s',
+                    ns, d_flag, close_duration)
+                continue
+
+            candidates.append((ns, flag_xy, d_flag))
+
+        if not candidates:
+            return None
+        candidates.sort(key=lambda c: c[2])
+        return candidates[0][0], candidates[0][1]
 
     def _map_cb(self, msg):
         with self._map_lock:
             self._map = msg
 
+    def _robot_map_cb(self, msg, ns):
+        with self._robot_map_lock:
+            self._robot_maps[ns] = msg
+
     def _get_map(self):
         with self._map_lock:
             return self._map
+
+    def _get_robot_map(self, ns):
+        with self._robot_map_lock:
+            return self._robot_maps.get(ns)
 
     def _coverage(self, grid):
         if grid is None or not grid.data:
@@ -250,6 +723,30 @@ class SlamFrontierExplorerCtf:
         key = self._blacklist_key(wx, wy)
         with self._blacklist_lock:
             self._blacklist[key] = time.monotonic() + duration
+
+    def _claim_frontier(self, ns, wx, wy):
+        key = self._blacklist_key(wx, wy)
+        with self._frontier_claim_lock:
+            self._frontier_claims[key] = (ns, time.monotonic() + self.frontier_claim_sec)
+
+    def _is_frontier_claimed_by_other(self, ns, wx, wy):
+        key = self._blacklist_key(wx, wy)
+        now = time.monotonic()
+        with self._frontier_claim_lock:
+            claim = self._frontier_claims.get(key)
+            if claim is None:
+                return False
+            owner, expiry = claim
+            if now >= expiry:
+                del self._frontier_claims[key]
+                return False
+            return owner != ns
+
+    def _recover_navigation(self, ns, spin_sec=2.5):
+        self._clients[ns].cancel_all_goals()
+        self._spin_to_scan(ns, spin_sec)
+        self._last_flag_goal.pop(ns, None)
+        self._last_flag_goal_time.pop(ns, None)
 
     def _find_frontiers(self, grid):
         info = grid.info
@@ -313,7 +810,7 @@ class SlamFrontierExplorerCtf:
     def _safe_goal_near_frontier(self, grid, wx, wy):
         info = grid.info
         mx, my = world_to_map(wx, wy, info)
-        search_cells = max(2, int(round(0.8 / info.resolution)))
+        search_cells = max(2, int(round(1.2 / info.resolution)))
 
         best = None
         best_dist = float('inf')
@@ -335,23 +832,71 @@ class SlamFrontierExplorerCtf:
                 return best
         return None
 
+    def _territory_penalty_for(self, ns, wx, wy):
+        """Penalize frontiers on the teammate's side of the map (diagonal x+y=0)."""
+        bisector = wx + wy
+        if ns == 'robot1' and bisector > 0.0:
+            return self.territory_penalty * bisector
+        if ns == 'robot2' and bisector < 0.0:
+            return self.territory_penalty * abs(bisector)
+        return 0.0
+
+    def _pick_frontier_by_separation(self, ns, robot_xy, frontiers, all_poses):
+        best = None
+        best_sep = -float('inf')
+        for wx, wy, size in frontiers:
+            if self._is_blacklisted(wx, wy) or self._is_frontier_claimed_by_other(ns, wx, wy):
+                continue
+            my_dist = math.hypot(wx - robot_xy[0], wy - robot_xy[1])
+            other_dists = [
+                math.hypot(wx - other_xy[0], wy - other_xy[1])
+                for other_ns, other_xy in all_poses.items()
+                if other_ns != ns
+            ]
+            if not other_dists:
+                continue
+            separation = min(other_dists) - my_dist
+            separation -= self._territory_penalty_for(ns, wx, wy) * 0.1
+            if separation > best_sep:
+                best_sep = separation
+                best = (wx, wy, size)
+        return best, best_sep
+
+    def _pick_closest_frontier(self, ns, robot_xy, frontiers):
+        """Last-resort frontier when Voronoi blocks everything (keeps idle robots moving)."""
+        best = None
+        best_dist = float('inf')
+        for wx, wy, size in frontiers:
+            if self._is_blacklisted(wx, wy):
+                continue
+            if self._is_frontier_claimed_by_other(ns, wx, wy):
+                continue
+            dist = math.hypot(wx - robot_xy[0], wy - robot_xy[1])
+            if dist < best_dist:
+                best_dist = dist
+                best = (wx, wy, size)
+        return best
+
     def _pick_frontier(self, ns, robot_xy, frontiers, all_poses, strict_voronoi=True):
         best = None
         best_score = float('inf')
+        used_fallback = False
 
-        # Read last known flag position safely
-        last_flag = None
-        with self.flag_lock:
-            if self.last_known_flag_xy is not None:
-                last_flag = self.last_known_flag_xy
+        has_flag_hint, flag_xy = self._get_fresh_flag_estimate(ns)
+        flag_source = self._flag_estimate_source(ns)
+        flag_bias = self.flag_bias_weight
+        if flag_source == 'teammate':
+            flag_bias *= 3.0
 
         for wx, wy, size in frontiers:
             if self._is_blacklisted(wx, wy):
                 continue
+            if self._is_frontier_claimed_by_other(ns, wx, wy):
+                continue
 
             my_dist = math.hypot(wx - robot_xy[0], wy - robot_xy[1])
 
-            if strict_voronoi:
+            if strict_voronoi and flag_source != 'teammate':
                 blocked = False
                 for other_ns, other_xy in all_poses.items():
                     if other_ns == ns:
@@ -365,19 +910,109 @@ class SlamFrontierExplorerCtf:
             gain = self.gain_scale * math.sqrt(float(size))
             score = my_dist - gain
 
-            if last_flag is not None:
-                dist_to_flag = math.hypot(wx - last_flag[0], wy - last_flag[1])
-                score += 2.0 * dist_to_flag  # Bias towards last known flag position
+            if flag_source != 'teammate':
+                score += self._territory_penalty_for(ns, wx, wy)
+
+            for other_ns, other_xy in all_poses.items():
+                if other_ns == ns:
+                    continue
+                other_dist = math.hypot(wx - other_xy[0], wy - other_xy[1])
+                if other_dist < my_dist:
+                    score += self.separation_weight * (my_dist - other_dist)
+
+            if has_flag_hint and flag_xy is not None:
+                dist_to_flag = math.hypot(wx - flag_xy[0], wy - flag_xy[1])
+                score += flag_bias * dist_to_flag
 
             if score < best_score:
                 best_score = score
                 best = (wx, wy, size)
 
         if best is None and strict_voronoi:
-            return self._pick_frontier(ns, robot_xy, frontiers, all_poses, strict_voronoi=False)
+            used_fallback = True
+            best, best_sep = self._pick_frontier_by_separation(ns, robot_xy, frontiers, all_poses)
+        else:
+            best_sep = None
+
+        if best is not None:
+            other_pose = None
+            for other_ns, other_xy in all_poses.items():
+                if other_ns != ns:
+                    other_pose = other_xy
+                    break
+            inter_robot = None
+            if other_pose is not None:
+                inter_robot = math.hypot(robot_xy[0] - other_pose[0], robot_xy[1] - other_pose[1])
+
+
         return best
 
-    def _make_goal(self, wx, wy, yaw):
+    def _get_nav_grid(self, ns):
+        return self._get_map()
+
+    def _resolve_chase_goal(self, ns, robot_pose, target_xy, allow_partial=True):
+        """Map-validated chase goal: known-free cell, stepping through mapped space."""
+        grid = self._get_nav_grid(ns)
+        if grid is None:
+            return None
+
+        tx, ty = target_xy[0], target_xy[1]
+        travel = math.hypot(tx - robot_pose[0], ty - robot_pose[1])
+        if travel < 0.20:
+            return None
+
+        # 1. If target is close enough, we try to go direct
+        if travel <= 2.0:
+            snapped = self._snap_goal_to_free(grid, tx, ty)
+            if snapped is not None:
+                tx, ty = snapped
+                mx, my = world_to_map(tx, ty, grid.info)
+                if self._cell_has_clearance(grid, mx, my):
+                    yaw = math.atan2(ty - robot_pose[1], tx - robot_pose[0])
+                    return tx, ty, yaw
+
+        # 2. If target is far or direct failed, and we allow partial, find a waypoint toward target
+        if allow_partial:
+            step = self._find_map_goal_toward(grid, robot_pose, target_xy)
+            if step is not None:
+                sx, sy = step
+                yaw = math.atan2(sy - robot_pose[1], sx - robot_pose[0])
+                return sx, sy, yaw
+
+        # 3. Fallback: if partial failed or target is far and direct snap wasn't attempted, try direct
+        if travel > 2.0:
+            snapped = self._snap_goal_to_free(grid, tx, ty)
+            if snapped is not None:
+                tx, ty = snapped
+                mx, my = world_to_map(tx, ty, grid.info)
+                if self._cell_has_clearance(grid, mx, my):
+                    yaw = math.atan2(ty - robot_pose[1], tx - robot_pose[0])
+                    return tx, ty, yaw
+
+        return None
+
+    def _send_carrier_goal(self, wx, wy, yaw, tag=''):
+        if self.carrier_ns is None or self.game_state not in ('CAPTURED', 'CHASE'):
+            return
+        if self._capturer_ns is not None and self.carrier_ns != self._capturer_ns:
+            self._log_warn_event(
+                'ROLE ERROR: carrier=%s but capturer=%s — fixing',
+                self.carrier_ns, self._capturer_ns)
+            self.carrier_ns = self._capturer_ns
+            self.pursuer_ns = (
+                'robot2' if self._capturer_ns == 'robot1' else 'robot1')
+        self._log_chase_goal('carrier', self.carrier_ns, tag, wx, wy)
+        self._clients[self.carrier_ns].send_goal(
+            self._make_goal(wx, wy, yaw, ns=self.carrier_ns))
+
+    def _send_pursuer_goal(self, wx, wy, yaw, tag=''):
+        if self.pursuer_ns is None or self.game_state != 'CHASE':
+            return
+        self._log_chase_goal('pursuer', self.pursuer_ns, tag, wx, wy)
+        self._clients[self.pursuer_ns].send_goal(
+            self._make_goal(wx, wy, yaw, ns=self.pursuer_ns))
+
+    def _make_goal(self, wx, wy, yaw, ns=None):
         qx, qy, qz, qw = yaw_to_quaternion(yaw)
         goal = MoveBaseGoal()
         goal.target_pose.header.frame_id = self.map_frame
@@ -398,9 +1033,16 @@ class SlamFrontierExplorerCtf:
                      if pose is not None else float('inf'))
         rate = rospy.Rate(5.0)
         while rospy.Time.now() < deadline and not rospy.is_shutdown() and not self._stop.is_set():
-            # Interruption check: check if robot detected a flag or if game state changed
-            has_flag, _ = self._get_fresh_flag_estimate(ns)
-            if has_flag or self.game_state != 'EXPLORING':
+            if self.game_state != 'EXPLORING':
+                client.cancel_goal()
+                return False
+            has_own, _ = self._has_fresh_flag_estimate(ns)
+            if has_own:
+                client.cancel_goal()
+                return False
+            with self._state_lock:
+                mode = self._search_state.get(ns, 'EXPLORING')
+            if mode in ('PURSUING_FLAG', 'APPROACHING_SHARED'):
                 client.cancel_goal()
                 return False
 
@@ -416,16 +1058,11 @@ class SlamFrontierExplorerCtf:
                     best_dist = dist
                     last_progress = rospy.Time.now()
 
-            # Reset progress timeout if robots are close to avoid canceling goals due to yielding/avoidance
-            other_ns = 'robot2' if ns == 'robot1' else 'robot1'
-            other_pose = self._get_robot_pose(other_ns + '/base_footprint')
-            if pose is not None and other_pose is not None:
-                d_robots = math.hypot(pose[0] - other_pose[0], pose[1] - other_pose[1])
-                if d_robots < 2.2:
-                    last_progress = rospy.Time.now()
+            # Enforce progress timeout even when close to resolve stuck situations/deadlocks
 
             if (rospy.Time.now() - last_progress).to_sec() > self.progress_timeout:
-                rospy.logwarn('%s Goal stalled: no progress for %.1f s', ns, self.progress_timeout)
+                self._log_verbose_warn(
+                    '%s Goal stalled: no progress for %.1f s', ns, self.progress_timeout)
                 client.cancel_goal()
                 return False
 
@@ -433,26 +1070,41 @@ class SlamFrontierExplorerCtf:
         client.cancel_goal()
         return False
 
-    def _spin_to_scan(self, ns, duration=3.0):
-        pub = self._cmd_pubs[ns]
-        twist = Twist()
-        twist.angular.z = 0.8
-        end = rospy.Time.now() + rospy.Duration(duration)
+    def _spin_to_scan(self, ns, duration=2.0):
+        """Pause briefly to let the map update. No physical rotation needed
+        because the TurtleBot3 LIDAR already covers 360 degrees."""
+        wait = min(duration, 2.0)
+        end = rospy.Time.now() + rospy.Duration(wait)
         rate = rospy.Rate(10)
         while rospy.Time.now() < end and not rospy.is_shutdown() and not self._stop.is_set():
             if self.game_state != 'EXPLORING':
                 break
-            pub.publish(twist)
             rate.sleep()
-        pub.publish(Twist())
 
-    def _should_send_flag_goal(self, ns, fx, fy):
+    def _should_send_flag_goal(self, ns, fx, fy, pursuing=False, d_flag=None, support_only=False):
         now = rospy.Time.now().to_sec()
         last_goal = self._last_flag_goal.get(ns)
         last_time = self._last_flag_goal_time.get(ns, 0.0)
 
-        moved = last_goal is None or math.hypot(fx - last_goal[0], fy - last_goal[1]) > 0.3
-        stale = (now - last_time) > 1.0
+        moved = last_goal is None or math.hypot(fx - last_goal[0], fy - last_goal[1]) > 0.25
+        
+        if support_only:
+            # For supporting robots, only replan when the shared estimate has actually moved.
+            # This makes the goal static, allowing the global planner to route around walls.
+            if moved:
+                self._last_flag_goal[ns] = (fx, fy)
+                self._last_flag_goal_time[ns] = now
+                return True
+            return False
+
+        # When far away from the flag, we don't need to replan constantly (every 0.8s),
+        # which causes move_base to stutter. A 5.0s cooldown is much smoother.
+        if d_flag is not None and d_flag > 1.5:
+            stale_interval = 5.0
+        else:
+            stale_interval = 0.8 if pursuing else 1.0
+            
+        stale = (now - last_time) > stale_interval
 
         if moved or stale:
             self._last_flag_goal[ns] = (fx, fy)
@@ -460,81 +1112,757 @@ class SlamFrontierExplorerCtf:
             return True
         return False
 
-    def _get_approach_goal(self, robot_pose, flag_xy):
+    def _cell_is_navigable(self, grid, mx, my):
+        info = grid.info
+        w, h = info.width, info.height
+        data = grid.data
+        clear_cells = max(1, int(round(self.min_goal_clearance / info.resolution)))
+
+        if mx < clear_cells or my < clear_cells or mx >= w - clear_cells or my >= h - clear_cells:
+            return False
+
+        center_val = data[cell_index(mx, my, w)]
+        if not (center_val < 0 or center_val < FREE_THRESH):
+            return False
+
+        for dy in range(-clear_cells, clear_cells + 1):
+            for dx in range(-clear_cells, clear_cells + 1):
+                value = data[cell_index(mx + dx, my + dy, w)]
+                if value >= FREE_THRESH:
+                    return False
+        return True
+
+    def _snap_goal_to_free(self, grid, wx, wy):
+        """Return nearest navigable (free or unknown) map cell to (wx, wy), or None."""
+        if grid is None:
+            return wx, wy
+        info = grid.info
+        mx, my = world_to_map(wx, wy, info)
+        if self._cell_is_navigable(grid, mx, my):
+            return wx, wy
+
+        search_cells = max(3, int(round(1.5 / info.resolution)))
+        best = None
+        best_dist = float('inf')
+        for radius in range(1, search_cells + 1):
+            for dy in range(-radius, radius + 1):
+                for dx in range(-radius, radius + 1):
+                    if abs(dx) != radius and abs(dy) != radius:
+                        continue
+                    cx, cy = mx + dx, my + dy
+                    if not self._cell_is_navigable(grid, cx, cy):
+                        continue
+                    gx, gy = map_to_world(cx, cy, info)
+                    d = math.hypot(gx - wx, gy - wy)
+                    if d < best_dist:
+                        best_dist = d
+                        best = (gx, gy)
+            if best is not None:
+                return best
+        return None
+
+    def _find_map_goal_toward(self, grid, robot_xy, target_xy):
+        """Known-free cell closer to target than the robot (avoids line-through-wall goals)."""
+        info = grid.info
+        data = grid.data
+        w, h = info.width, info.height
+        rx, ry = world_to_map(robot_xy[0], robot_xy[1], info)
+        robot_dist = math.hypot(robot_xy[0] - target_xy[0], robot_xy[1] - target_xy[1])
+        search_cells = max(4, int(round(2.5 / info.resolution)))
+
+        best = None
+        best_score = float('inf')
+        for dy in range(-search_cells, search_cells + 1):
+            for dx in range(-search_cells, search_cells + 1):
+                cx, cy = rx + dx, ry + dy
+                if not self._cell_has_clearance(grid, cx, cy):
+                    continue
+                wx, wy = map_to_world(cx, cy, info)
+                to_flag = math.hypot(wx - target_xy[0], wy - target_xy[1])
+                if to_flag >= robot_dist - 0.08:
+                    continue
+                step_cost = math.hypot(wx - robot_xy[0], wy - robot_xy[1])
+                score = to_flag + 0.15 * step_cost
+                if score < best_score:
+                    best_score = score
+                    best = (wx, wy)
+        return best
+
+    def _move_base_idle(self, client):
+        state = client.get_state()
+        return state not in (GoalStatus.ACTIVE, GoalStatus.PENDING, GoalStatus.RECALLING)
+
+    def _approach_shared_flag(self, ns, client, cfg, pose, flag_xy):
+        """Navigate toward teammate's flag estimate via move_base global plan."""
+        self._send_flag_approach(ns, client, pose, flag_xy, support_only=True)
+
+    def _get_backoff_goal(self, robot_pose, grid, flank_sign=1):
+        """Short move_base goal away from the current heading (map-validated)."""
+        rx, ry, yaw = robot_pose
+        lx, ly = -math.sin(yaw), math.cos(yaw)
+        candidates = [
+            (rx - math.cos(yaw) * 0.40, ry - math.sin(yaw) * 0.40),
+            (rx + lx * 0.45 * flank_sign, ry + ly * 0.45 * flank_sign),
+            (rx - math.cos(yaw) * 0.30 + lx * 0.35 * flank_sign,
+             ry - math.sin(yaw) * 0.30 + ly * 0.35 * flank_sign),
+        ]
+        for gx, gy in candidates:
+            snapped = self._snap_goal_to_free(grid, gx, gy)
+            if snapped is not None:
+                return snapped[0], snapped[1], math.atan2(snapped[1] - ry, snapped[0] - rx)
+        return None
+
+    def _flank_index_for_stuck(self, stuck_count):
+        if stuck_count <= 0:
+            return 0
+        k = (stuck_count + 1) // 2
+        return k if stuck_count % 2 == 1 else -k
+
+    def _get_approach_goal(self, robot_pose, flag_xy, direct=False, flank_index=0,
+                           standoff_dist=None):
+        """Goal toward the flag: incremental steps when far, standoff when close."""
         rx, ry, _ = robot_pose
         fx, fy = flag_xy
         dx = fx - rx
         dy = fy - ry
         dist = math.hypot(dx, dy)
-        yaw = math.atan2(dy, dx)
+        if dist < 1e-3:
+            return fx, fy, 0.0
 
-        if dist > self.flag_standoff_distance and dist > 1e-3:
-            ux = dx / dist
-            uy = dy / dist
-            gx = fx - ux * self.flag_standoff_distance
-            gy = fy - uy * self.flag_standoff_distance
+        ux, uy = dx / dist, dy / dist
+        px, py = -uy, ux
+        lateral = flank_index * self.flag_approach_flank_step
+        close = self.flag_approach_max_distance
+        if standoff_dist is not None:
+            standoff = standoff_dist
         else:
-            gx = rx
-            gy = ry
-        return gx, gy, yaw
+            standoff = (
+                self._min_reach_distance if (direct or dist <= close)
+                else max(self.flag_standoff_distance, self._min_reach_distance))
+
+        if dist > close:
+            travel = min(self.flag_approach_step, max(0.55, dist - standoff - 0.12))
+            gx = rx + ux * travel + px * lateral * 0.4
+            gy = ry + uy * travel + py * lateral * 0.4
+            gyaw = math.atan2(gy - ry, gx - rx)
+            return gx, gy, gyaw
+
+        gx = fx - ux * standoff + px * lateral
+        gy = fy - uy * standoff + py * lateral
+        gyaw = math.atan2(fy - gy, fx - gx)
+        return gx, gy, gyaw
+
+    def _get_global_flag_goal(self, robot_pose, flag_xy, standoff):
+        """Plan directly to the flag coordinates so the goal is in free space in the flag's room."""
+        return flag_xy[0], flag_xy[1]
+
+    def _get_detour_goal(self, robot_pose, flag_xy, flank_sign):
+        """Side-step waypoint to leave a narrow gap and replan around obstacles."""
+        rx, ry, _ = robot_pose
+        fx, fy = flag_xy
+        dx, dy = fx - rx, fy - ry
+        dist = math.hypot(dx, dy)
+        if dist < 1e-3:
+            return rx, ry, 0.0
+
+        ux, uy = dx / dist, dy / dist
+        px, py = -uy, ux
+        step = min(self.flag_approach_detour_step, max(0.40, dist * 0.35))
+        gx = rx + ux * step + px * flank_sign * self.flag_approach_flank_step * 0.7
+        gy = ry + uy * step + py * flank_sign * self.flag_approach_flank_step * 0.7
+        return gx, gy, math.atan2(gy - ry, gx - rx)
+
+    def _send_flag_approach(self, ns, client, pose, flag_xy, support_flank=0,
+                            support_only=False):
+        if self.game_state != 'EXPLORING':
+            return
+        d_flag = math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
+        mb_state = client.get_state()
+        now = time.monotonic()
+        stuck_count = self._pursuit_stuck_count.get(ns, 0)
+        min_approach_dist = self._min_reach_distance + 0.15
+
+        if d_flag < self._pursuit_closest_dist.get(ns, d_flag + 1.0) - 0.03:
+            self._pursuit_closest_dist[ns] = d_flag
+            self._pursuit_last_progress_time[ns] = now
+            if stuck_count > 0:
+                self._pursuit_stuck_count[ns] = stuck_count - 1
+                stuck_count = self._pursuit_stuck_count[ns]
+
+        last_d = self._pursuit_last_d_flag.get(ns, d_flag)
+        terminal = mb_state in (
+            GoalStatus.ABORTED, GoalStatus.REJECTED, GoalStatus.PREEMPTED)
+        idle = mb_state not in (
+            GoalStatus.ACTIVE, GoalStatus.PENDING, GoalStatus.RECALLING)
+
+        no_progress = (
+            now - self._pursuit_last_progress_time.get(ns, now) > self.flag_approach_nudge_sec
+            and d_flag >= last_d - 0.03)
+        oscillating = (
+            mb_state in (GoalStatus.ACTIVE, GoalStatus.PENDING)
+            and no_progress and d_flag > min_approach_dist)
+
+        use_backoff = False
+        if d_flag <= self.flag_approach_backoff_max and (oscillating or (terminal and no_progress)):
+            stuck_count += 1
+            self._pursuit_stuck_count[ns] = stuck_count
+            use_backoff = True
+            client.cancel_all_goals()
+            self._pursuit_last_progress_time[ns] = now
+            self._last_flag_goal_time[ns] = 0.0
+        elif oscillating or (terminal and no_progress):
+            stuck_count += 1
+            self._pursuit_stuck_count[ns] = stuck_count
+            client.cancel_all_goals()
+            self._pursuit_last_progress_time[ns] = now
+            self._last_flag_goal_time[ns] = 0.0
+
+        start_dist = self._pursuit_start_dist.get(ns, d_flag)
+        closest = self._pursuit_closest_dist.get(ns, d_flag)
+        made_approach_progress = closest <= start_dist - 0.35
+        close_enough_to_refine = (
+            True if support_only else
+            (d_flag <= self.flag_approach_max_distance
+             and (start_dist <= self.flag_approach_max_distance + 0.30
+                  or made_approach_progress)))
+        still_far = d_flag > self.flag_capture_distance + 0.15
+        use_direct = close_enough_to_refine or terminal
+
+        need_send = (
+            idle
+            or terminal
+            or no_progress
+            or oscillating
+            or (mb_state == GoalStatus.SUCCEEDED and still_far)
+            or self._should_send_flag_goal(
+                ns, flag_xy[0], flag_xy[1], pursuing=not support_only,
+                d_flag=d_flag, support_only=support_only))
+
+        if not need_send:
+            return
+
+        grid = self._get_map()
+        stuck_count = self._pursuit_stuck_count.get(ns, 0)
+        flank_sign = 1 if stuck_count % 2 == 1 else -1
+        mode = 'approach'
+        gx = gy = gyaw = None
+
+        if use_backoff and grid is not None:
+            backoff = self._get_backoff_goal(pose, grid, flank_sign)
+            if backoff is not None:
+                gx, gy, gyaw = backoff
+                mode = 'backoff'
+
+        if gx is None:
+            if stuck_count >= self.flag_approach_detour_after:
+                gx, gy, gyaw = self._get_detour_goal(pose, flag_xy, flank_sign)
+                mode = 'detour'
+            elif d_flag > self.flag_global_plan_min_dist or support_only:
+                # Use a closer standoff to ensure the target is in the same room/free space as the flag,
+                # letting move_base plan paths through doors rather than getting stuck in intermediate walls.
+                # The supporting robot will cancel its goal and stop at flag_support_standoff (2.20m) reactively.
+                standoff = max(
+                    self._min_reach_distance + 0.05,
+                    self.flag_capture_distance * 0.90)
+                gx, gy = self._get_global_flag_goal(pose, flag_xy, standoff)
+                gyaw = math.atan2(flag_xy[1] - pose[1], flag_xy[0] - pose[0])
+                mode = 'global-flag'
+            else:
+                if not support_only and not use_direct and grid is not None:
+                    step = self._find_map_goal_toward(grid, pose, flag_xy)
+                    if step is not None:
+                        gx, gy = step
+                        gyaw = math.atan2(gy - pose[1], gx - pose[0])
+                        mode = 'map_safe'
+
+                if gx is None:
+                    flank = (support_flank if support_flank
+                             else self._flank_index_for_stuck(stuck_count))
+                    goal_standoff = (
+                        self.flag_support_standoff if support_only else None)
+                    gx, gy, gyaw = self._get_approach_goal(
+                        pose, flag_xy, direct=use_direct, flank_index=flank,
+                        standoff_dist=goal_standoff)
+                    if support_only:
+                        mode = 'shared-direct' if use_direct else 'shared-step'
+                    elif not use_direct:
+                        mode = 'step'
+                    elif flank:
+                        mode = 'flank'
+                    elif use_direct:
+                        mode = 'direct'
+                    else:
+                        mode = 'approach'
+
+        if grid is not None:
+            if mode in ('step', 'global-flag') or d_flag > self.flag_approach_max_distance:
+                snapped = self._snap_goal_to_free(grid, gx, gy)
+                if snapped is not None:
+                    snap_shift = math.hypot(snapped[0] - gx, snapped[1] - gy)
+                    if snap_shift <= 1.0:
+                        gx, gy = snapped
+            elif d_flag < 2.5:
+                snapped = self._snap_goal_to_free(grid, gx, gy)
+                if snapped is None:
+                    self._log_verbose_warn(
+                        '%s: no free cell near flag goal (%.2f, %.2f); detour',
+                        ns, gx, gy)
+                    self._pursuit_stuck_count[ns] = stuck_count + 1
+                    gx, gy, gyaw = self._get_detour_goal(pose, flag_xy, flank_sign)
+                    mode = 'detour'
+                else:
+                    snap_shift = math.hypot(snapped[0] - gx, snapped[1] - gy)
+                    if snap_shift <= 0.75:
+                        gx, gy = snapped
+                    else:
+                        self._log_verbose_warn(
+                            '%s: snap rejected (shift=%.2f m); keep raw goal',
+                            ns, snap_shift)
+
+        tag = 'APPROACH_SHARED' if support_only else 'PURSUE'
+        self._log_flag_goal(
+            ns, tag, mode, d_flag, gx, gy, flag_xy, mb_state,
+            stuck=stuck_count, start_dist=start_dist, closest=closest)
+        client.send_goal(self._make_goal(gx, gy, gyaw, ns=ns))
+        self._pursuit_last_d_flag[ns] = d_flag
+
+    def _goal_terminal(self, ns):
+        state = self._clients[ns].get_state()
+        return state in (GoalStatus.SUCCEEDED, GoalStatus.ABORTED,
+                         GoalStatus.REJECTED, GoalStatus.PREEMPTED)
+
+    def _goal_succeeded(self, ns):
+        return self._clients[ns].get_state() == GoalStatus.SUCCEEDED
+
+    def _make_chase_clearance_goal(self, carrier_pose, home):
+        cx, cy, _ = carrier_pose
+        hx, hy, hyaw = home
+        dx = hx - cx
+        dy = hy - cy
+        dist = math.hypot(dx, dy)
+        if dist < 1e-3:
+            return hx, hy, hyaw
+
+        step = min(self.chase_flag_clearance, max(0.0, dist - 0.10))
+        if step < self.chase_clearance_min_travel:
+            return hx, hy, hyaw
+
+        return cx + (dx / dist) * step, cy + (dy / dist) * step, math.atan2(dy, dx)
+
+    def _make_interception_goal(self, carrier_pose, pursuer_pose, home):
+        cx, cy, _ = carrier_pose
+        px, py, _ = pursuer_pose
+        hx, hy, _ = home
+        home_dx = hx - cx
+        home_dy = hy - cy
+        home_dist = math.hypot(home_dx, home_dy)
+        if not self.intercept_enabled or home_dist < 1e-3:
+            return cx, cy, math.atan2(cy - py, cx - px)
+
+        robot_distance = math.hypot(cx - px, cy - py)
+        if robot_distance <= self.intercept_direct_chase_distance:
+            return cx, cy, math.atan2(cy - py, cx - px)
+
+        ux = home_dx / home_dist
+        uy = home_dy / home_dist
+        step = max(0.10, self.intercept_step)
+        chosen_s = -1.0
+        s = step
+        while s <= home_dist:
+            ix = cx + ux * s
+            iy = cy + uy * s
+            pursuer_dist = math.hypot(px - ix, py - iy)
+            if pursuer_dist + self.intercept_arrival_margin <= s:
+                chosen_s = s
+                break
+            s += step
+
+        if chosen_s < 0.0:
+            chosen_s = min(home_dist, max(step, self.intercept_min_lead))
+
+        gx = cx + ux * chosen_s
+        gy = cy + uy * chosen_s
+        return gx, gy, math.atan2(gy - py, gx - px)
+
+    def _send_pursuer_intercept(self, carrier_pose, pursuer_pose):
+        home = self.homes[self.carrier_ns]
+        gx, gy, gyaw = self._make_interception_goal(carrier_pose, pursuer_pose, home)
+        resolved = self._resolve_chase_goal(
+            self.pursuer_ns, pursuer_pose, (gx, gy), allow_partial=True)
+        if resolved is None:
+            self._log_verbose_warn(
+                'CHASE: pursuer %s no safe intercept goal toward (%.2f, %.2f)',
+                self.pursuer_ns, gx, gy)
+            return
+        gx, gy, gyaw = resolved
+        self._send_pursuer_goal(gx, gy, gyaw, tag='intercept')
+        self._has_intercept_goal = True
+        self._intercept_anchor = (carrier_pose[0], carrier_pose[1])
+        self._pursuer_was_succeeded = False
+        self._last_pursuer_progress_dist = math.hypot(
+            pursuer_pose[0] - gx, pursuer_pose[1] - gy)
+        self._last_pursuer_progress_time = time.monotonic()
+
+    def _send_pursuer_direct_chase(self, carrier_pose, pursuer_pose):
+        cx, cy, _ = carrier_pose
+        px, py, _ = pursuer_pose
+        resolved = self._resolve_chase_goal(
+            self.pursuer_ns, pursuer_pose, (cx, cy), allow_partial=True)
+        if resolved is None:
+            self._log_verbose_warn(
+                'CHASE: pursuer %s no safe chase step toward carrier yet',
+                self.pursuer_ns)
+            return
+        gx, gy, gyaw = resolved
+        self._send_pursuer_goal(gx, gy, gyaw, tag='direct-chase')
+        self._has_intercept_goal = True
+        self._intercept_anchor = (cx, cy)
+        self._pursuer_was_succeeded = False
+        self._last_direct_chase_sent = time.monotonic()
+        self._last_pursuer_progress_dist = math.hypot(px - cx, py - cy)
+        self._last_pursuer_progress_time = time.monotonic()
+
+    def _resend_carrier_goal(self):
+        home = self.homes[self.carrier_ns]
+        cpose = self._get_robot_pose(self.carrier_ns + '/base_footprint')
+        if cpose is None:
+            return
+        if self._carrier_on_home_goal:
+            resolved = self._resolve_chase_goal(
+                self.carrier_ns, cpose, (home[0], home[1]), allow_partial=True)
+            if resolved is None:
+                self._log_verbose_warn(
+                    'CTF CHASE: %s no safe plan to home yet', self.carrier_ns)
+                return
+            gx, gy, gyaw = resolved
+            tag = 'home-resend'
+        elif self._clearance_goal is not None:
+            gx, gy = self._clearance_goal
+            gyaw = math.atan2(home[1] - gy, home[0] - gx)
+            resolved = self._resolve_chase_goal(
+                self.carrier_ns, cpose, (gx, gy), allow_partial=True)
+            if resolved is None:
+                self._log_verbose_warn(
+                    'CTF CHASE: %s no safe clearance resend', self.carrier_ns)
+                return
+            gx, gy, gyaw = resolved
+            tag = 'clearance-resend'
+        else:
+            return
+        self._send_carrier_goal(gx, gy, gyaw, tag=tag)
+
+    def _init_chase(self):
+        for ns in self._clients:
+            self._cancel_robot_goal(ns)
+        for ns in self._clients:
+            self._wait_move_base_idle(ns)
+        rospy.sleep(0.3)
+
+        cpose = self._get_robot_pose(self.carrier_ns + '/base_footprint')
+        ppose = self._get_robot_pose(self.pursuer_ns + '/base_footprint')
+        if not cpose or not ppose:
+            self._log_warn_event('CHASE: missing TF pose at start')
+            self._chase_initialized = True
+            return
+
+        home = self.homes[self.carrier_ns]
+        gx, gy, gyaw = self._make_chase_clearance_goal(cpose, home)
+        clearance_dist = math.hypot(gx - cpose[0], gy - cpose[1])
+        self._clearance_goal = (gx, gy)
+        self._carrier_on_home_goal = clearance_dist < self.chase_clearance_min_travel
+        self._chase_started = time.monotonic()
+
+        if self._carrier_on_home_goal:
+            resolved = self._resolve_chase_goal(
+                self.carrier_ns, cpose, (home[0], home[1]), allow_partial=True)
+            if resolved is None:
+                self._log_warn_event(
+                    'CHASE: %s no safe direct home plan; trying clearance',
+                    self.carrier_ns)
+                self._carrier_on_home_goal = False
+                self._clearance_goal = (gx, gy)
+                resolved = self._resolve_chase_goal(
+                    self.carrier_ns, cpose, (gx, gy), allow_partial=True)
+            if resolved is None:
+                self._log_warn_event('CHASE: missing safe carrier goal at start')
+                self._chase_initialized = True
+                return
+            tgx, tgy, tgyaw = resolved
+            self._send_carrier_goal(tgx, tgy, tgyaw, tag='home-start')
+            target = 'base'
+        else:
+            resolved = self._resolve_chase_goal(
+                self.carrier_ns, cpose, (gx, gy), allow_partial=True)
+            if resolved is None:
+                self._log_warn_event('CHASE: missing safe clearance goal at start')
+                self._chase_initialized = True
+                return
+            tgx, tgy, tgyaw = resolved
+            self._send_carrier_goal(tgx, tgy, tgyaw, tag='clearance-start')
+            target = 'clearance'
+
+        self._log_game_phase(
+            'CHASE', 'carrier=%s pursuer=%s' % (self.carrier_ns, self.pursuer_ns))
+        self._log_verbose(
+            'CTF CHASE START: capturer=%s carrier=%s -> %s (%.2f, %.2f); pursuer=%s',
+            self._capturer_ns, self.carrier_ns, target,
+            home[0] if self._carrier_on_home_goal else tgx,
+            home[1] if self._carrier_on_home_goal else tgy,
+            self.pursuer_ns)
+
+        self._last_carrier_progress_home_dist = math.hypot(
+            cpose[0] - home[0], cpose[1] - home[1])
+        self._last_carrier_progress_time = time.monotonic()
+        self._send_pursuer_direct_chase(cpose, ppose)
+        self._chase_initialized = True
+
+    def _tick_chase(self):
+        cpose = self._get_robot_pose(self.carrier_ns + '/base_footprint')
+        ppose = self._get_robot_pose(self.pursuer_ns + '/base_footprint')
+        if not cpose or not ppose:
+            self._log_verbose_warn('CHASE: waiting for TF frames of robots...')
+            return
+
+        home = self.homes[self.carrier_ns]
+        d = math.hypot(cpose[0] - ppose[0], cpose[1] - ppose[1])
+        carrier_home_dist = math.hypot(cpose[0] - home[0], cpose[1] - home[1])
+        self._log_verbose(
+            'CHASE: %s-%s dist=%.2f m; %s home dist=%.2f m',
+            self.carrier_ns, self.pursuer_ns, d, self.carrier_ns, carrier_home_dist)
+
+        if d <= self.catch_distance:
+            self._log_banner(
+                '=== PURSUER %s CAUGHT CARRIER %s (%.2fm) ===',
+                self.pursuer_ns, self.carrier_ns, d)
+            self.game_state = 'FINISHED'
+            return
+
+        if carrier_home_dist <= self.waypoint_reached_dist:
+            if self._capture_carrier_pose is not None:
+                travel_from_capture = math.hypot(
+                    cpose[0] - self._capture_carrier_pose[0],
+                    cpose[1] - self._capture_carrier_pose[1])
+                if travel_from_capture < self.chase_home_min_travel_from_capture:
+                    self._log_verbose_warn(
+                        'CHASE: %s near home (%.2fm) but only %.2fm from capture '
+                        '(need %.2fm) — not a valid return',
+                        self.carrier_ns, carrier_home_dist, travel_from_capture,
+                        self.chase_home_min_travel_from_capture)
+                    return
+            self._log_banner(
+                '=== CARRIER %s REACHED HOME (%.2fm) ===',
+                self.carrier_ns, carrier_home_dist)
+            self.game_state = 'FINISHED'
+            return
+
+        if not self._carrier_on_home_goal and self._clearance_goal is not None:
+            gx, gy = self._clearance_goal
+            clearance_dist = math.hypot(cpose[0] - gx, cpose[1] - gy)
+            clearance_ok = clearance_dist <= self.chase_clearance_reached_dist
+            clearance_goal_done = (
+                self._goal_succeeded(self.carrier_ns)
+                and time.monotonic() - self._chase_started > 1.0)
+            if clearance_ok or clearance_goal_done:
+                resolved = self._resolve_chase_goal(
+                    self.carrier_ns, cpose, (home[0], home[1]), allow_partial=True)
+                if resolved is not None:
+                    gx, gy, gyaw = resolved
+                    self._send_carrier_goal(gx, gy, gyaw, tag='home-after-clearance')
+                    self._carrier_on_home_goal = True
+                    self._last_carrier_progress_time = time.monotonic()
+                    self._last_carrier_progress_home_dist = carrier_home_dist
+                    self._log_verbose(
+                        'CTF CHASE: %s reached clearance; continuing to base',
+                        self.carrier_ns)
+                elif clearance_goal_done:
+                    self._log_verbose_warn(
+                        'CTF CHASE: %s clearance done but no safe home plan yet',
+                        self.carrier_ns)
+
+        now = time.monotonic()
+        if self._carrier_on_home_goal:
+            carrier_goal_done = self._goal_succeeded(self.carrier_ns)
+            if carrier_goal_done and carrier_home_dist > self.waypoint_reached_dist:
+                self._resend_carrier_goal()
+                self._last_carrier_home_resend = now
+                self._last_carrier_progress_time = now
+                self._last_carrier_progress_home_dist = carrier_home_dist
+                self._log_verbose(
+                    'CTF CHASE: %s goal updated for next intermediate home waypoint',
+                    self.carrier_ns)
+
+        if self._goal_terminal(self.carrier_ns) and not self._goal_succeeded(self.carrier_ns):
+            if now - self._last_carrier_home_resend >= self.carrier_home_resend_cooldown:
+                self._resend_carrier_goal()
+                self._last_carrier_home_resend = now
+                self._last_carrier_progress_time = now
+                self._last_carrier_progress_home_dist = carrier_home_dist
+                self._log_warn_event(
+                    'CHASE %s goal re-sent (navigation failure)', self.carrier_ns)
+        elif not self._goal_terminal(self.carrier_ns):
+            if (self._last_carrier_progress_home_dist < 0.0 or
+                    self._last_carrier_progress_home_dist - carrier_home_dist >=
+                    self.carrier_home_progress_threshold):
+                self._last_carrier_progress_home_dist = carrier_home_dist
+                self._last_carrier_progress_time = now
+
+            stuck_for = now - self._last_carrier_progress_time
+            if (stuck_for >= self.carrier_home_stuck_timeout and
+                    now - self._last_carrier_home_resend >= self.carrier_home_resend_cooldown):
+                self._resend_carrier_goal()
+                self._last_carrier_home_resend = now
+                self._last_carrier_progress_time = now
+                self._last_carrier_progress_home_dist = carrier_home_dist
+                self._log_warn_event(
+                    'CHASE %s stuck %.1fs at home dist %.1fm — re-sending',
+                    self.carrier_ns, stuck_for, carrier_home_dist)
+
+        # Pursuer always chases the carrier — never receives a home goal.
+        carrier_move = 0.0
+        if self._intercept_anchor is not None:
+            carrier_move = math.hypot(
+                cpose[0] - self._intercept_anchor[0],
+                cpose[1] - self._intercept_anchor[1])
+        pursuer_failed = (self._goal_terminal(self.pursuer_ns) and
+                          not self._goal_succeeded(self.pursuer_ns))
+        pursuer_succeeded = self._goal_succeeded(self.pursuer_ns)
+        pursuer_state = self._clients[self.pursuer_ns].get_state()
+        pursuer_active = pursuer_state in (
+            GoalStatus.ACTIVE, GoalStatus.PENDING, GoalStatus.RECALLING)
+        pursuer_dist_carrier = math.hypot(ppose[0] - cpose[0], ppose[1] - cpose[1])
+        if (self._last_pursuer_progress_dist < 0.0 or
+                self._last_pursuer_progress_dist - pursuer_dist_carrier >= 0.12):
+            self._last_pursuer_progress_dist = pursuer_dist_carrier
+            self._last_pursuer_progress_time = now
+        pursuer_stuck = (
+            (now - self._last_pursuer_progress_time) >= 8.0 and pursuer_active)
+
+        chase_ready = time.monotonic() - self._chase_started > 1.0
+        refresh_pursuer = chase_ready and (
+            not self._has_intercept_goal or
+            pursuer_failed or
+            pursuer_succeeded or
+            pursuer_stuck or
+            carrier_move >= self.direct_chase_carrier_move)
+        if refresh_pursuer:
+            if d <= self.intercept_direct_chase_distance or not self.intercept_enabled:
+                self._send_pursuer_direct_chase(cpose, ppose)
+            else:
+                self._send_pursuer_intercept(cpose, ppose)
+
+    def _cancel_robot_goal(self, ns):
+        self._clients[ns].cancel_all_goals()
+
+    def _wait_move_base_idle(self, ns, timeout=2.0):
+        """Wait until move_base is not reporting a stale SUCCEEDED from a prior goal."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline and not rospy.is_shutdown():
+            state = self._clients[ns].get_state()
+            if state not in (GoalStatus.SUCCEEDED, GoalStatus.ABORTED,
+                             GoalStatus.REJECTED, GoalStatus.PREEMPTED):
+                return
+            rospy.sleep(0.05)
+
+    def _enter_post_capture_phase(self):
+        """Stop exploration threads from sending goals; clear per-robot search state."""
+        with self._state_lock:
+            for ns in ('robot1', 'robot2'):
+                self._search_state[ns] = 'IDLE'
+                self._clear_pursuit_tracking(ns)
+        for ns in self._clients:
+            self._cancel_robot_goal(ns)
+        self._has_intercept_goal = False
+        self._intercept_anchor = None
+        self._pursuer_was_succeeded = False
+        self._carrier_on_home_goal = False
+        self._clearance_goal = None
+        self._capture_phase_pub.publish(Bool(data=False))
 
     def _capture_flag(self, ns, flag_xy):
-        rospy.loginfo(f'==================================================')
-        rospy.loginfo(f'!!! FLAG CAPTURED BY {ns} at ({flag_xy[0]:.2f}, {flag_xy[1]:.2f}) !!!')
-        rospy.loginfo(f'==================================================')
+        with self._capture_lock:
+            if self.game_state != 'EXPLORING':
+                return
 
-        # Cancel goals on both robots
-        for client in self._clients.values():
-            client.cancel_all_goals()
+            pose = self._get_robot_pose(ns + '/base_footprint')
+            d_flag = (math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
+                      if pose is not None else -1.0)
+            self._log_capture(ns, flag_xy, d_flag)
+            self._log_robot_phase(ns, 'IDLE')
+            other = 'robot2' if ns == 'robot1' else 'robot1'
+            self._log_robot_phase(other, 'IDLE')
 
-        # Stop exploration thread logic
-        self.game_state = 'CAPTURED'
-        self.carrier_ns = ns
-        self.pursuer_ns = 'robot2' if ns == 'robot1' else 'robot1'
-        self._flag_captured_pub.publish(Bool(data=True))
+            self._capturer_ns = ns
+            self.carrier_ns = ns
+            self.pursuer_ns = other
+            self._capture_carrier_pose = pose
+            self._log_game_phase(
+                'CAPTURED', 'carrier=%s pursuer=%s' % (ns, self.pursuer_ns))
+            self._log_verbose(
+                'CTF ROLES: capturer=%s -> carrier (home at %.2f, %.2f); pursuer=%s',
+                self._capturer_ns,
+                self.homes[self.carrier_ns][0], self.homes[self.carrier_ns][1],
+                self.pursuer_ns)
 
-        # Pause for capture celebration
+            self.game_state = 'CAPTURED'
+            self._flag_captured_pub.publish(Bool(data=True))
+
+        self._enter_post_capture_phase()
         rospy.sleep(self.capture_pause_sec)
 
-        # Start Chase phase
-        self.game_state = 'CHASE'
+        with self._capture_lock:
+            if self.game_state == 'CAPTURED':
+                self.game_state = 'CHASE'
+                self._chase_initialized = False
+                self._log_game_phase('CHASE', 'starting')
 
     def _robot_loop(self, cfg):
         ns = cfg['ns']
         client = self._clients[ns]
-        rospy.loginfo('%s loop started', ns)
+        self._log_verbose('%s loop started', ns)
         consecutive_fails = 0
+        idle_no_frontier = 0
 
         while not self._stop.is_set() and not rospy.is_shutdown():
             if self.game_state == 'FINISHED':
                 break
 
-            if self.game_state == 'CHASE' or self.game_state == 'CAPTURED':
-                # The main game loop handles Chase phase command logic
-                rospy.sleep(0.5)
-                continue
-
-            # Check if this robot has a fresh flag estimate
-            has_flag, flag_xy = self._get_fresh_flag_estimate(ns)
-            if has_flag:
-                pose = self._get_robot_pose(cfg['base_frame'])
-                if pose is not None:
-                    # Check if close enough to capture
-                    d_flag = math.hypot(pose[0] - flag_xy[0], pose[1] - flag_xy[1])
-                    if d_flag <= self.flag_capture_distance:
-                        self._capture_flag(ns, flag_xy)
-                        continue
-
-                    # Drive to flag approach stance
-                    if self._should_send_flag_goal(ns, flag_xy[0], flag_xy[1]):
-                        gx, gy, gyaw = self._get_approach_goal(pose, flag_xy)
-                        rospy.loginfo(f'[{ns}] Pursuing flag candidate at ({flag_xy[0]:.2f}, {flag_xy[1]:.2f}), distance: {d_flag:.2f} m')
-                        client.send_goal(self._make_goal(gx, gy, gyaw))
-                
+            if self.game_state in ('CHASE', 'CAPTURED'):
+                with self._state_lock:
+                    if self._search_state.get(ns) != 'IDLE':
+                        self._search_state[ns] = 'IDLE'
+                        self._clear_pursuit_tracking(ns)
                 rospy.sleep(0.2)
                 continue
 
-            # Standard exploration logic
+            self._update_search_flag_states()
+
+            with self._state_lock:
+                search_state = self._search_state[ns]
+                if search_state == 'IDLE':
+                    rospy.sleep(0.2)
+                    continue
+
+            if search_state == 'PURSUING_FLAG':
+                has_own, own_xy = self._has_fresh_flag_estimate(ns)
+                if has_own and own_xy is not None:
+                    pose = self._get_robot_pose(cfg['base_frame'])
+                    if pose is not None:
+                        self._send_flag_approach(ns, client, pose, own_xy)
+
+                rospy.sleep(0.2)
+                continue
+
+            if search_state == 'APPROACHING_SHARED':
+                has_shared, shared_xy = self._get_fresh_flag_estimate(ns)
+                if has_shared and shared_xy is not None:
+                    pose = self._get_robot_pose(cfg['base_frame'])
+                    if pose is not None:
+                        self._approach_shared_flag(
+                            ns, client, cfg, pose, shared_xy)
+                rospy.sleep(0.2)
+                continue
+
+            # Standard exploration logic (only while EXPLORING sub-state)
             grid = self._get_map()
             if grid is None:
                 rospy.sleep(1.0)
@@ -547,15 +1875,38 @@ class SlamFrontierExplorerCtf:
 
             frontiers = self._find_frontiers(grid)
             if not frontiers:
-                rospy.loginfo_throttle(15.0, '%s: no frontiers visible', ns)
-                self._spin_to_scan(ns, 4.0)
+                idle_no_frontier += 1
+                self._log_verbose(
+                    '%s: no frontiers visible (idle=%d)', ns, idle_no_frontier)
+                self._spin_to_scan(ns, min(4.0, 1.5 + idle_no_frontier * 0.5))
                 continue
 
             all_poses = self._all_robot_poses()
-            pick = self._pick_frontier(ns, pose, frontiers, all_poses)
+            # After repeated failures, relax Voronoi partitioning
+            use_strict = idle_no_frontier < self.idle_frontier_cycles
+            pick = self._pick_frontier(ns, pose, frontiers, all_poses, strict_voronoi=use_strict)
             if pick is None:
-                rospy.logwarn_throttle(10.0, '%s: no assignable frontier, spinning', ns)
-                self._spin_to_scan(ns, 3.0)
+                pick = self._pick_closest_frontier(ns, pose, frontiers)
+                if pick is not None:
+                    self._log_verbose(
+                        '%s: voronoi blocked all frontiers; using closest', ns)
+            if pick is None:
+                idle_no_frontier += 1
+                if not use_strict:
+                    self._log_verbose_warn(
+                        '%s: no frontier even with relaxed Voronoi (idle=%d), spinning',
+                        ns, idle_no_frontier)
+                else:
+                    self._log_verbose_warn(
+                        '%s: no assignable frontier (idle=%d/%d until Voronoi relaxed), spinning',
+                        ns, idle_no_frontier, self.idle_frontier_cycles)
+                self._spin_to_scan(ns, min(3.0, 1.5 + idle_no_frontier * 0.3))
+                continue
+
+            idle_no_frontier = 0
+
+            if self.game_state != 'EXPLORING':
+                rospy.sleep(0.2)
                 continue
 
             wx, wy, size = pick
@@ -567,8 +1918,10 @@ class SlamFrontierExplorerCtf:
 
             wx, wy = safe_goal
             yaw = math.atan2(wy - pose[1], wx - pose[0])
-            rospy.loginfo('%s -> frontier (%.2f, %.2f) size=%d', ns, wx, wy, size)
-            client.send_goal(self._make_goal(wx, wy, yaw))
+            self._claim_frontier(ns, wx, wy)
+            self._log_nav_goal(ns, 'explore', 'frontier', wx, wy)
+            self._log_verbose('%s -> frontier (%.2f, %.2f) size=%d', ns, wx, wy, size)
+            client.send_goal(self._make_goal(wx, wy, yaw, ns=ns))
             ok = self._wait_for_goal(ns, client, cfg['base_frame'], (wx, wy), self.goal_timeout)
 
             # Check if they were close to each other to avoid counting it as a failure
@@ -585,20 +1938,25 @@ class SlamFrontierExplorerCtf:
             else:
                 if not were_close:
                     consecutive_fails += 1
-                    self._blacklist_goal(wx, wy, duration=40.0)
+                    self._blacklist_goal(wx, wy, duration=25.0)
+                    self._log_warn_event(
+                        '%s: exploration goal failed (%d in a row)', ns, consecutive_fails)
+                    self._log_verbose(
+                        '%s: exploration goal failed (%d in a row); recovering',
+                        ns, consecutive_fails)
+                    self._recover_navigation(ns, spin_sec=1.5)
+                    if consecutive_fails >= 3:
+                        consecutive_fails = 0
                 else:
-                    rospy.loginfo(f'{ns}: Goal cancelled or failed due to proximity/yielding. Not counting as failure.')
-                
-                if consecutive_fails >= 3:
-                    rospy.logwarn('%s: %d consecutive fails, spinning to recover',
-                                 ns, consecutive_fails)
-                    self._spin_to_scan(ns, 5.0)
-                    consecutive_fails = 0
+                    self._log_verbose(
+                        '%s: Goal cancelled due to proximity/yielding (not a failure). '
+                        'Blacklisting temporarily to resolve congestion.', ns)
+                    self._blacklist_goal(wx, wy, duration=15.0)
 
             rospy.sleep(0.2)
 
         client.cancel_all_goals()
-        rospy.loginfo('%s loop stopped', ns)
+        self._log_verbose('%s loop stopped', ns)
 
     def _publish_markers(self):
         arr = MarkerArray()
@@ -663,7 +2021,7 @@ class SlamFrontierExplorerCtf:
         self._marker_pub.publish(arr)
 
     def run(self):
-        rospy.loginfo('Exploration-based Capture the Flag simulation active')
+        self._log_verbose('Exploration-based Capture the Flag simulation active')
 
         threads = []
         for cfg in self.robots:
@@ -673,7 +2031,6 @@ class SlamFrontierExplorerCtf:
             threads.append(t)
 
         rate = rospy.Rate(5.0)
-        last_chase_update = 0.0
 
         while not rospy.is_shutdown() and self.game_state != 'FINISHED':
             # Publish markers and update telemetry
@@ -682,50 +2039,24 @@ class SlamFrontierExplorerCtf:
             grid = self._get_map()
             cov = self._coverage(grid)
             unknown = self._unknown_count(grid)
-            
+
             if self.game_state == 'EXPLORING':
-                rospy.loginfo_throttle(
-                    10.0, f'Exploration: map coverage={cov*100.0:.1f}%, unknown cells={unknown}, game_state={self.game_state}'
-                )
+                self._update_search_flag_states()
+                candidate = self._find_first_capture_candidate()
+                if candidate is not None:
+                    cap_ns, flag_xy = candidate
+                    self._capture_flag(cap_ns, flag_xy)
+
+                if not self._is_brief():
+                    rospy.loginfo_throttle(
+                        10.0, 'Exploration: map coverage=%.1f%%, unknown cells=%d, game_state=%s',
+                        cov * 100.0, unknown, self.game_state)
 
             elif self.game_state == 'CHASE':
-                cpose = self._get_robot_pose(self.carrier_ns + '/base_footprint')
-                ppose = self._get_robot_pose(self.pursuer_ns + '/base_footprint')
-
-                if cpose and ppose:
-                    # 1. Check if pursuer caught the carrier
-                    dist = math.hypot(cpose[0] - ppose[0], cpose[1] - ppose[1])
-                    rospy.loginfo_throttle(1.0, f'CHASE: Distance between carrier({self.carrier_ns}) and pursuer({self.pursuer_ns}) = {dist:.2f} m')
-                    if dist <= self.catch_distance:
-                        rospy.loginfo(f'==================================================')
-                        rospy.loginfo(f'!!! GAME OVER: PURSUER {self.pursuer_ns} CAUGHT THE CARRIER {self.carrier_ns} (dist={dist:.2f}m) !!!')
-                        rospy.loginfo(f'==================================================')
-                        self.game_state = 'FINISHED'
-                        break
-
-                    # 2. Check if carrier reached home
-                    home = self.homes[self.carrier_ns]
-                    dist_home = math.hypot(cpose[0] - home[0], cpose[1] - home[1])
-                    if dist_home <= 0.55 or self._clients[self.carrier_ns].get_state() == GoalStatus.SUCCEEDED:
-                        rospy.loginfo(f'==================================================')
-                        rospy.loginfo(f'!!! GAME OVER: CARRIER {self.carrier_ns} REACHED HOME BASE SAFELY !!!')
-                        rospy.loginfo(f'==================================================')
-                        self.game_state = 'FINISHED'
-                        break
-
-                    # Send home goal to carrier if not already running
-                    carrier_state = self._clients[self.carrier_ns].get_state()
-                    if carrier_state not in (GoalStatus.ACTIVE, GoalStatus.PENDING):
-                        rospy.loginfo(f'CHASE: Sending carrier {self.carrier_ns} home to {home}')
-                        self._clients[self.carrier_ns].send_goal(self._make_goal(home[0], home[1], home[2]))
-
-                    # 3. Periodically update pursuer's goal to follow the carrier
-                    if time.monotonic() - last_chase_update >= self.chase_goal_period:
-                        self._clients[self.pursuer_ns].send_goal(self._make_goal(cpose[0], cpose[1], cpose[2]))
-                        last_chase_update = time.monotonic()
-
+                if not self._chase_initialized:
+                    self._init_chase()
                 else:
-                    rospy.logwarn_throttle(3.0, 'CHASE: waiting for TF frames of robots...')
+                    self._tick_chase()
 
             rate.sleep()
 
@@ -735,8 +2066,13 @@ class SlamFrontierExplorerCtf:
             client.cancel_all_goals()
         self._done_pub.publish(Bool(data=True))
 
+        self._log_banner('=== GAME FINISHED ===')
+
         for t in threads:
             t.join(timeout=3.0)
+
+        import os
+        os._exit(0)
 
 
 def main():
