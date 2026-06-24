@@ -2,7 +2,7 @@
 <package format="2">
   <name>ctf_navigation</name>
   <version>0.1.0</version>
-  <description>CTF navigation: dual TurtleBot3, exploration, vision, move_base planners</description>
+  <description>Real multi-robot CTF navigation for two TurtleBot3 Waffle Pi robots.</description>
   <maintainer email="paessa@todo.todo">paessa</maintainer>
   <license>MIT</license>
 
@@ -10,20 +10,14 @@
 
   <build_depend>roscpp</build_depend>
   <build_depend>geometry_msgs</build_depend>
-  <build_depend>nav_msgs</build_depend>
   <build_depend>sensor_msgs</build_depend>
   <build_depend>std_msgs</build_depend>
-  <build_depend>move_base_msgs</build_depend>
-  <build_depend>visualization_msgs</build_depend>
-  <build_depend>actionlib</build_depend>
-  <build_depend>actionlib_msgs</build_depend>
   <build_depend>tf2_ros</build_depend>
   <build_depend>tf2_geometry_msgs</build_depend>
-  <build_depend>costmap_2d</build_depend>
   <build_depend>cv_bridge</build_depend>
-  <build_depend>rospy</build_depend>
 
   <exec_depend>roscpp</exec_depend>
+  <exec_depend>rospy</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
@@ -32,24 +26,19 @@
   <exec_depend>visualization_msgs</exec_depend>
   <exec_depend>actionlib</exec_depend>
   <exec_depend>actionlib_msgs</exec_depend>
+  <exec_depend>tf</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>tf2_geometry_msgs</exec_depend>
   <exec_depend>costmap_2d</exec_depend>
   <exec_depend>cv_bridge</exec_depend>
-  <exec_depend>rospy</exec_depend>
-  <exec_depend>tf</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
 
   <exec_depend>move_base</exec_depend>
-  <exec_depend>amcl</exec_depend>
-  <exec_depend>map_server</exec_depend>
   <exec_depend>gmapping</exec_depend>
-  <exec_depend>multirobot_map_merge</exec_depend>
   <exec_depend>global_planner</exec_depend>
   <exec_depend>dwa_local_planner</exec_depend>
-  <exec_depend>gazebo_ros</exec_depend>
-  <exec_depend>robot_state_publisher</exec_depend>
-  <exec_depend>xacro</exec_depend>
-  <exec_depend>turtlebot3_description</exec_depend>
+  <exec_depend>rviz</exec_depend>
+  <exec_depend>rqt_image_view</exec_depend>
+  <exec_depend>turtlebot3_bringup</exec_depend>
   <exec_depend>turtlebot3_navigation</exec_depend>
-
 </package>
